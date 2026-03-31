@@ -8,11 +8,10 @@
 #include <unistd.h>
 #include <signal.h>
 #include <gsl/gsl_rng.h>
-#include <mpi.h>
 
 #include "allvars.h"
 #include "proto.h"
-
+#include "mdmp_interface.h"
 
 /*! \file system.c
  *  \brief contains miscellaneous routines, e.g. elapsed time measurements
@@ -49,7 +48,7 @@ void set_random_numbers(void)
 double second(void)
 {
 #ifdef WALLCLOCK
-  return MPI_Wtime();
+  return MDMP_WTIME();
 #else
   return ((double) clock()) / CLOCKS_PER_SEC;
 #endif

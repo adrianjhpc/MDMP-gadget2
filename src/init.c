@@ -1,21 +1,21 @@
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
-#include <mpi.h>
 
 #include "allvars.h"
 #include "proto.h"
+#include "mdmp_interface.h"
 
 
 /*! \file init.c
- *  \brief Code for initialisation of a simulation from initial conditions
+ * \brief Code for initialisation of a simulation from initial conditions
  */
 
 
 /*! This function reads the initial conditions, and allocates storage for the
- *  tree. Various variables of the particle data are initialised and An intial
- *  domain decomposition is performed. If SPH particles are present, the inial
- *  SPH smoothing lengths are determined.
+ * tree. Various variables of the particle data are initialised and An intial
+ * domain decomposition is performed. If SPH particles are present, the inial
+ * SPH smoothing lengths are determined.
  */
 void init(void)
 {
@@ -73,14 +73,14 @@ void init(void)
 
   All.TimeLastStatistics = All.TimeBegin - All.TimeBetStatistics;
 
-  if(All.ComovingIntegrationOn)	/*  change to new velocity variable */
+  if(All.ComovingIntegrationOn)	/* change to new velocity variable */
     {
       for(i = 0; i < NumPart; i++)
 	for(j = 0; j < 3; j++)
 	  P[i].Vel[j] *= sqrt(All.Time) * All.Time;
     }
 
-  for(i = 0; i < NumPart; i++)	/*  start-up initialization */
+  for(i = 0; i < NumPart; i++)	/* start-up initialization */
     {
       for(j = 0; j < 3; j++)
 	P[i].GravAccel[j] = 0;
@@ -102,7 +102,7 @@ void init(void)
 
 #ifdef FLEXSTEPS
   All.PresentMinStep = TIMEBASE;
-  for(i = 0; i < NumPart; i++)	/*  start-up initialization */
+  for(i = 0; i < NumPart; i++)	/* start-up initialization */
     {
       P[i].FlexStepGrp = (int) (TIMEBASE * get_random_number(P[i].ID));
     }
@@ -156,7 +156,7 @@ void init(void)
 
 
 /*! This routine computes the mass content of the box and compares it to the
- *  specified value of Omega-matter.  If discrepant, the run is terminated.
+ * specified value of Omega-matter.  If discrepant, the run is terminated.
  */
 void check_omega(void)
 {
@@ -166,7 +166,7 @@ void check_omega(void)
   for(i = 0; i < NumPart; i++)
     mass += P[i].Mass;
 
-  MPI_Allreduce(&mass, &masstot, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+  MDMP_ALLREDUCE(&mass, &masstot, 1, MDMP_SUM); // Converted to MDMP
 
   omega =
     masstot / (All.BoxSize * All.BoxSize * All.BoxSize) / (3 * All.Hubble * All.Hubble / (8 * M_PI * All.G));
@@ -190,10 +190,10 @@ void check_omega(void)
 
 
 /*! This function is used to find an initial smoothing length for each SPH
- *  particle. It guarantees that the number of neighbours will be between
- *  desired_ngb-MAXDEV and desired_ngb+MAXDEV. For simplicity, a first guess
- *  of the smoothing length is provided to the function density(), which will
- *  then iterate if needed to find the right smoothing length.
+ * particle. It guarantees that the number of neighbours will be between
+ * desired_ngb-MAXDEV and desired_ngb+MAXDEV. For simplicity, a first guess
+ * of the smoothing length is provided to the function density(), which will
+ * then iterate if needed to find the right smoothing length.
  */
 void setup_smoothinglengths(void)
 {
@@ -230,7 +230,7 @@ void setup_smoothinglengths(void)
 
 
 /*! If the code is run in glass-making mode, this function populates the
- *  simulation box with a Poisson sample of particles.
+ * simulation box with a Poisson sample of particles.
  */
 #if (MAKEGLASS > 1)
 void seed_glass(void)

@@ -1,28 +1,29 @@
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
 #include <float.h>
-#include <mpi.h>
 
 #include "allvars.h"
 #include "proto.h"
+#include "mdmp_interface.h" // Added MDMP interface
 
 /*! \file gravtree.c 
- *  \brief main driver routines for gravitational (short-range) force computation
+ * \brief main driver routines for gravitational (short-range) force computation
  *
- *  This file contains the code for the gravitational force computation by
- *  means of the tree algorithm. To this end, a tree force is computed for
- *  all active local particles, and particles are exported to other
- *  processors if needed, where they can receive additional force
- *  contributions. If the TreePM algorithm is enabled, the force computed
- *  will only be the short-range part.
+ * This file contains the code for the gravitational force computation by
+ * means of the tree algorithm. To this end, a tree force is computed for
+ * all active local particles, and particles are exported to other
+ * processors if needed, where they can receive additional force
+ * contributions. If the TreePM algorithm is enabled, the force computed
+ * will only be the short-range part.
  */
 
 /*! This function computes the gravitational forces for all active
- *  particles.  If needed, a new tree is constructed, otherwise the
- *  dynamically updated tree is used.  Particles are only exported to other
- *  processors when really needed, thereby allowing a good use of the
- *  communication buffer.
+ * particles.  If needed, a new tree is constructed, otherwise the
+ * dynamically updated tree is used.  Particles are only exported to other
+ * processors when really needed, thereby allowing a good use of the
+ * communication buffer.
  */
 void gravity_tree(void)
 {
@@ -43,7 +44,7 @@ void gravity_tree(void)
   int k, place;
   int level, sendTask, recvTask;
   double ax, ay, az;
-  MPI_Status status;
+  // MPI_Status status; // Removed, handled internally by MDMP
 #endif
 
   /* set new softening lengths */
@@ -72,7 +73,7 @@ void gravity_tree(void)
 
   /* Note: 'NumForceUpdate' has already been determined in find_next_sync_point_and_drift() */
   numlist = malloc(NTask * sizeof(int) * NTask);
-  MPI_Allgather(&NumForceUpdate, 1, MPI_INT, numlist, 1, MPI_INT, MPI_COMM_WORLD);
+  MDMP_ALLGATHER(&NumForceUpdate, 1, numlist); // Converted to MDMP
   for(i = 0, ntot = 0; i < NTask; i++)
     ntot += numlist[i];
   free(numlist);
@@ -156,7 +157,7 @@ void gravity_tree(void)
 
       tstart = second();
 
-      MPI_Allgather(nsend_local, NTask, MPI_INT, nsend, NTask, MPI_INT, MPI_COMM_WORLD);
+      MDMP_ALLGATHER(nsend_local, NTask, nsend); // Converted to MDMP
 
       tend = second();
       timeimbalance += timediff(tstart, tend);
@@ -188,12 +189,9 @@ void gravity_tree(void)
 		  if(nsend[ThisTask * NTask + recvTask] > 0 || nsend[recvTask * NTask + ThisTask] > 0)
 		    {
 		      /* get the particles */
-		      MPI_Sendrecv(&GravDataIn[noffset[recvTask]],
-				   nsend_local[recvTask] * sizeof(struct gravdata_in), MPI_BYTE,
-				   recvTask, TAG_GRAV_A,
-				   &GravDataGet[nbuffer[ThisTask]],
-				   nsend[recvTask * NTask + ThisTask] * sizeof(struct gravdata_in), MPI_BYTE,
-				   recvTask, TAG_GRAV_A, MPI_COMM_WORLD, &status);
+		      // Split MPI_Sendrecv into explicit MDMP_SEND and MDMP_RECV
+		      MDMP_SEND(&GravDataIn[noffset[recvTask]], nsend_local[recvTask], ThisTask, recvTask, TAG_GRAV_A);
+		      MDMP_RECV(&GravDataGet[nbuffer[ThisTask]], nsend[recvTask * NTask + ThisTask], ThisTask, recvTask, TAG_GRAV_A);
 		    }
 		}
 
@@ -218,7 +216,7 @@ void gravity_tree(void)
 	  timetree += timediff(tstart, tend);
 
 	  tstart = second();
-	  MPI_Barrier(MPI_COMM_WORLD);
+	  MDMP_COMM_SYNC(); // Converted to MDMP
 	  tend = second();
 	  timeimbalance += timediff(tstart, tend);
 
@@ -245,12 +243,9 @@ void gravity_tree(void)
 		  if(nsend[ThisTask * NTask + recvTask] > 0 || nsend[recvTask * NTask + ThisTask] > 0)
 		    {
 		      /* send the results */
-		      MPI_Sendrecv(&GravDataResult[nbuffer[ThisTask]],
-				   nsend[recvTask * NTask + ThisTask] * sizeof(struct gravdata_in),
-				   MPI_BYTE, recvTask, TAG_GRAV_B,
-				   &GravDataOut[noffset[recvTask]],
-				   nsend_local[recvTask] * sizeof(struct gravdata_in),
-				   MPI_BYTE, recvTask, TAG_GRAV_B, MPI_COMM_WORLD, &status);
+		      // Split MPI_Sendrecv into explicit MDMP_SEND and MDMP_RECV
+		      MDMP_SEND(&GravDataResult[nbuffer[ThisTask]], nsend[recvTask * NTask + ThisTask], ThisTask, recvTask, TAG_GRAV_B);
+		      MDMP_RECV(&GravDataOut[noffset[recvTask]], nsend_local[recvTask], ThisTask, recvTask, TAG_GRAV_B);
 
 		      /* add the result to the particles */
 		      for(j = 0; j < nsend_local[recvTask]; j++)
@@ -275,7 +270,7 @@ void gravity_tree(void)
 	  level = ngrp - 1;
 	}
 
-      MPI_Allgather(&ndone, 1, MPI_INT, ndonelist, 1, MPI_INT, MPI_COMM_WORLD);
+      MDMP_ALLGATHER(&ndone, 1, ndonelist); // Converted to MDMP
       for(j = 0; j < NTask; j++)
 	ntotleft -= ndonelist[j];
     }
@@ -321,7 +316,7 @@ void gravity_tree(void)
   if(All.TypeOfOpeningCriterion == 1)
     All.ErrTolTheta = 0;	/* This will switch to the relative opening criterion for the following force computations */
 
-  /*  muliply by G */
+  /* muliply by G */
   for(i = 0; i < NumPart; i++)
     if(P[i].Ti_endstep == All.Ti_Current)
       for(j = 0; j < 3; j++)
@@ -367,7 +362,7 @@ void gravity_tree(void)
 
   /* Now the force computation is finished */
 
-  /*  gather some diagnostic information */
+  /* gather some diagnostic information */
 
   timetreelist = malloc(sizeof(double) * NTask);
   timecommlist = malloc(sizeof(double) * NTask);
@@ -378,14 +373,14 @@ void gravity_tree(void)
 
   numnodes = Numnodestree;
 
-  MPI_Gather(&costtotal, 1, MPI_DOUBLE, costtreelist, 1, MPI_DOUBLE, 0, MPI_COMM_WORLD);
-  MPI_Gather(&numnodes, 1, MPI_INT, numnodeslist, 1, MPI_INT, 0, MPI_COMM_WORLD);
-  MPI_Gather(&timetree, 1, MPI_DOUBLE, timetreelist, 1, MPI_DOUBLE, 0, MPI_COMM_WORLD);
-  MPI_Gather(&timecommsumm, 1, MPI_DOUBLE, timecommlist, 1, MPI_DOUBLE, 0, MPI_COMM_WORLD);
-  MPI_Gather(&NumPart, 1, MPI_INT, nrecv, 1, MPI_INT, 0, MPI_COMM_WORLD);
-  MPI_Gather(&ewaldcount, 1, MPI_DOUBLE, ewaldlist, 1, MPI_DOUBLE, 0, MPI_COMM_WORLD);
-  MPI_Reduce(&nexportsum, &nexport, 1, MPI_INT, MPI_SUM, 0, MPI_COMM_WORLD);
-  MPI_Reduce(&timeimbalance, &sumimbalance, 1, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
+  MDMP_GATHER(&costtotal, 1, costtreelist, 0); // Converted to MDMP
+  MDMP_GATHER(&numnodes, 1, numnodeslist, 0); // Converted to MDMP
+  MDMP_GATHER(&timetree, 1, timetreelist, 0); // Converted to MDMP
+  MDMP_GATHER(&timecommsumm, 1, timecommlist, 0); // Converted to MDMP
+  MDMP_GATHER(&NumPart, 1, nrecv, 0); // Converted to MDMP
+  MDMP_GATHER(&ewaldcount, 1, ewaldlist, 0); // Converted to MDMP
+  MDMP_REDUCE(&nexportsum, &nexport, 1, 0, MDMP_SUM); // Converted to MDMP
+  MDMP_REDUCE(&timeimbalance, &sumimbalance, 1, 0, MDMP_SUM); // Converted to MDMP
 
   if(ThisTask == 0)
     {
@@ -448,8 +443,8 @@ void gravity_tree(void)
 
 
 /*! This function sets the (comoving) softening length of all particle
- *  types in the table All.SofteningTable[...].  We check that the physical
- *  softening length is bounded by the Softening-MaxPhys values.
+ * types in the table All.SofteningTable[...].  We check that the physical
+ * softening length is bounded by the Softening-MaxPhys values.
  */
 void set_softenings(void)
 {
@@ -505,8 +500,8 @@ void set_softenings(void)
 
 
 /*! This function is used as a comparison kernel in a sort routine. It is
- *  used to group particles in the communication buffer that are going to
- *  be sent to the same CPU.
+ * used to group particles in the communication buffer that are going to
+ * be sent to the same CPU.
  */
 int grav_tree_compare_key(const void *a, const void *b)
 {

@@ -2,12 +2,12 @@
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
-#include <mpi.h>
 #include "allvars.h"
 #include "proto.h"
+#include "mdmp_interface.h"
 
 /*! \file timestep.c 
- *  \brief routines for 'kicking' particles in momentum space and assigning new timesteps
+ * \brief routines for 'kicking' particles in momentum space and assigning new timesteps
  */
 
 static double fac1, fac2, fac3, hubble_a, atime, a3inv;
@@ -15,11 +15,11 @@ static double dt_displacement = 0;
 
 
 /*! This function advances the system in momentum space, i.e. it does apply
- *  the 'kick' operation after the forces have been computed. Additionally, it
- *  assigns new timesteps to particles. At start-up, a half-timestep is
- *  carried out, as well as at the end of the simulation. In between, the
- *  half-step kick that ends the previous timestep and the half-step kick for
- *  the new timestep are combined into one operation.
+ * the 'kick' operation after the forces have been computed. Additionally, it
+ * assigns new timesteps to particles. At start-up, a half-timestep is
+ * carried out, as well as at the end of the simulation. In between, the
+ * half-step kick that ends the previous timestep and the half-step kick for
+ * the new timestep are combined into one operation.
  */
 void advance_and_find_timesteps(void)
 {
@@ -103,8 +103,8 @@ void advance_and_find_timesteps(void)
 	dispmax = disp;
     }
 
-  MPI_Allreduce(&dispmax, &globmax, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
-  MPI_Allreduce(&disp2sum, &globdisp2sum, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+  MDMP_ALLREDUCE(&dispmax, &globmax, 1, MDMP_MAX); // Converted to MDMP
+  MDMP_ALLREDUCE(&disp2sum, &globdisp2sum, 1, MDMP_SUM); // Converted to MDMP
 
   dmean = pow(P[0].Mass / (All.Omega0 * 3 * All.Hubble * All.Hubble / (8 * M_PI * All.G)), 1.0 / 3);
 
@@ -159,7 +159,7 @@ void advance_and_find_timesteps(void)
     }
 
   ti_step = All.PresentMinStep;
-  MPI_Allreduce(&ti_step, &All.PresentMinStep, 1, MPI_INT, MPI_MIN, MPI_COMM_WORLD);
+  MDMP_ALLREDUCE(&ti_step, &All.PresentMinStep, 1, MDMP_MIN); // Converted to MDMP
 
   if(dt_displacement < All.MaxSizeTimestep)
     ti_step = (int) (dt_displacement / All.Timebase_interval);
@@ -412,13 +412,13 @@ void advance_and_find_timesteps(void)
 
 
 /*! This function normally (for flag==0) returns the maximum allowed timestep
- *  of a particle, expressed in terms of the integer mapping that is used to
- *  represent the total simulated timespan. The physical acceleration is
- *  returned in `aphys'. The latter is used in conjunction with the
- *  PSEUDOSYMMETRIC integration option, which also makes of the second
- *  function of get_timestep. When it is called with a finite timestep for
- *  flag, it returns the physical acceleration that would lead to this
- *  timestep, assuming timestep criterion 0.
+ * of a particle, expressed in terms of the integer mapping that is used to
+ * represent the total simulated timespan. The physical acceleration is
+ * returned in `aphys'. The latter is used in conjunction with the
+ * PSEUDOSYMMETRIC integration option, which also makes of the second
+ * function of get_timestep. When it is called with a finite timestep for
+ * flag, it returns the physical acceleration that would lead to this
+ * timestep, assuming timestep criterion 0.
  */
 int get_timestep(int p,		/*!< particle index */
 		 double *aphys,	/*!< acceleration (physical units) */
@@ -556,12 +556,12 @@ int get_timestep(int p,		/*!< particle index */
 
 
 /*! This function computes an upper limit ('dt_displacement') to the global
- *  timestep of the system based on the rms velocities of particles. For
- *  cosmological simulations, the criterion used is that the rms displacement
- *  should be at most a fraction MaxRMSDisplacementFac of the mean particle
- *  separation. Note that the latter is estimated using the assigned particle
- *  masses, separately for each particle type. If comoving integration is not
- *  used, the function imposes no constraint on the timestep.
+ * timestep of the system based on the rms velocities of particles. For
+ * cosmological simulations, the criterion used is that the rms displacement
+ * should be at most a fraction MaxRMSDisplacementFac of the mean particle
+ * separation. Note that the latter is estimated using the assigned particle
+ * masses, separately for each particle type. If comoving integration is not
+ * used, the function imposes no constraint on the timestep.
  */
 void find_dt_displacement_constraint(double hfac /*!<  should be  a^2*H(a)  */ )
 {
@@ -590,11 +590,11 @@ void find_dt_displacement_constraint(double hfac /*!<  should be  a^2*H(a)  */ )
 	  count[P[i].Type]++;
 	}
 
-      MPI_Allreduce(v, v_sum, 6, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
-      MPI_Allreduce(mim, min_mass, 6, MPI_DOUBLE, MPI_MIN, MPI_COMM_WORLD);
+      MDMP_ALLREDUCE(v, v_sum, 6, MDMP_SUM); // Converted to MDMP
+      MDMP_ALLREDUCE(mim, min_mass, 6, MDMP_MIN); // Converted to MDMP
 
       temp = malloc(NTask * 6 * sizeof(int));
-      MPI_Allgather(count, 6, MPI_INT, temp, 6, MPI_INT, MPI_COMM_WORLD);
+      MDMP_ALLGATHER(count, 6, temp); // Converted to MDMP
       for(i = 0; i < 6; i++)
 	{
 	  count_sum[i] = 0;

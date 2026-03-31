@@ -2,17 +2,17 @@
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
-#include <mpi.h>
 #include <gsl/gsl_math.h>
 #include "allvars.h"
 #include "proto.h"
+#include "mdmp_interface.h" // Added MDMP interface
 
-/*! \file hydra.c
- *  \brief Computation of SPH forces and rate of entropy generation
+/*! \file hydra.c 
+ * \brief Computation of SPH forces and rate of entropy generation
  *
- *  This file contains the "second SPH loop", where the SPH forces are
- *  computed, and where the rate of change of entropy due to the shock heating
- *  (via artificial viscosity) is computed.
+ * This file contains the "second SPH loop", where the SPH forces are
+ * computed, and where the rate of change of entropy due to the shock heating
+ * (via artificial viscosity) is computed.
  */
 
 
@@ -44,8 +44,8 @@ static double boxSize_Z, boxHalf_Z;
 
 
 /*! This function is the driver routine for the calculation of hydrodynamical
- *  force and rate of change of entropy due to shock heating for all active
- *  particles .
+ * force and rate of change of entropy due to shock heating for all active
+ * particles .
  */
 void hydro_force(void)
 {
@@ -56,7 +56,7 @@ void hydro_force(void)
   double soundspeed_i;
   double tstart, tend, sumt, sumcomm;
   double timecomp = 0, timecommsumm = 0, timeimbalance = 0, sumimbalance;
-  MPI_Status status;
+  // MPI_Status status; // Removed, handled internally by MDMP
 
 #ifdef PERIODIC
   boxSize = All.BoxSize;
@@ -105,7 +105,7 @@ void hydro_force(void)
     }
 
   numlist = malloc(NTask * sizeof(int) * NTask);
-  MPI_Allgather(&NumSphUpdate, 1, MPI_INT, numlist, 1, MPI_INT, MPI_COMM_WORLD);
+  MDMP_ALLGATHER(&NumSphUpdate, 1, numlist); // Converted to MDMP
   for(i = 0, ntot = 0; i < NTask; i++)
     ntot += numlist[i];
   free(numlist);
@@ -177,7 +177,7 @@ void hydro_force(void)
 
       tstart = second();
 
-      MPI_Allgather(nsend_local, NTask, MPI_INT, nsend, NTask, MPI_INT, MPI_COMM_WORLD);
+      MDMP_ALLGATHER(nsend_local, NTask, nsend); // Converted to MDMP
 
       tend = second();
       timeimbalance += timediff(tstart, tend);
@@ -211,12 +211,9 @@ void hydro_force(void)
 		  if(nsend[ThisTask * NTask + recvTask] > 0 || nsend[recvTask * NTask + ThisTask] > 0)
 		    {
 		      /* get the particles */
-		      MPI_Sendrecv(&HydroDataIn[noffset[recvTask]],
-				   nsend_local[recvTask] * sizeof(struct hydrodata_in), MPI_BYTE,
-				   recvTask, TAG_HYDRO_A,
-				   &HydroDataGet[nbuffer[ThisTask]],
-				   nsend[recvTask * NTask + ThisTask] * sizeof(struct hydrodata_in), MPI_BYTE,
-				   recvTask, TAG_HYDRO_A, MPI_COMM_WORLD, &status);
+		      // Split MPI_Sendrecv into explicit MDMP_SEND and MDMP_RECV
+		      MDMP_SEND(&HydroDataIn[noffset[recvTask]], nsend_local[recvTask], ThisTask, recvTask, TAG_HYDRO_A);
+		      MDMP_RECV(&HydroDataGet[nbuffer[ThisTask]], nsend[recvTask * NTask + ThisTask], ThisTask, recvTask, TAG_HYDRO_A);
 		    }
 		}
 
@@ -236,7 +233,7 @@ void hydro_force(void)
 
 	  /* do a block to measure imbalance */
 	  tstart = second();
-	  MPI_Barrier(MPI_COMM_WORLD);
+	  MDMP_COMM_SYNC(); // Converted to MDMP
 	  tend = second();
 	  timeimbalance += timediff(tstart, tend);
 
@@ -264,12 +261,9 @@ void hydro_force(void)
 		  if(nsend[ThisTask * NTask + recvTask] > 0 || nsend[recvTask * NTask + ThisTask] > 0)
 		    {
 		      /* send the results */
-		      MPI_Sendrecv(&HydroDataResult[nbuffer[ThisTask]],
-				   nsend[recvTask * NTask + ThisTask] * sizeof(struct hydrodata_out),
-				   MPI_BYTE, recvTask, TAG_HYDRO_B,
-				   &HydroDataPartialResult[noffset[recvTask]],
-				   nsend_local[recvTask] * sizeof(struct hydrodata_out),
-				   MPI_BYTE, recvTask, TAG_HYDRO_B, MPI_COMM_WORLD, &status);
+		      // Split MPI_Sendrecv into explicit MDMP_SEND and MDMP_RECV
+		      MDMP_SEND(&HydroDataResult[nbuffer[ThisTask]], nsend[recvTask * NTask + ThisTask], ThisTask, recvTask, TAG_HYDRO_B);
+		      MDMP_RECV(&HydroDataPartialResult[noffset[recvTask]], nsend_local[recvTask], ThisTask, recvTask, TAG_HYDRO_B);
 
 		      /* add the result to the particles */
 		      for(j = 0; j < nsend_local[recvTask]; j++)
@@ -298,7 +292,7 @@ void hydro_force(void)
 	  level = ngrp - 1;
 	}
 
-      MPI_Allgather(&ndone, 1, MPI_INT, ndonelist, 1, MPI_INT, MPI_COMM_WORLD);
+      MDMP_ALLGATHER(&ndone, 1, ndonelist); // Converted to MDMP
       for(j = 0; j < NTask; j++)
 	ntotleft -= ndonelist[j];
     }
@@ -333,9 +327,9 @@ void hydro_force(void)
 
   /* collect some timing information */
 
-  MPI_Reduce(&timecomp, &sumt, 1, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
-  MPI_Reduce(&timecommsumm, &sumcomm, 1, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
-  MPI_Reduce(&timeimbalance, &sumimbalance, 1, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
+  MDMP_REDUCE(&timecomp, &sumt, 1, 0, MDMP_SUM); // Converted to MDMP
+  MDMP_REDUCE(&timecommsumm, &sumcomm, 1, 0, MDMP_SUM); // Converted to MDMP
+  MDMP_REDUCE(&timeimbalance, &sumimbalance, 1, 0, MDMP_SUM); // Converted to MDMP
 
   if(ThisTask == 0)
     {
@@ -347,8 +341,8 @@ void hydro_force(void)
 
 
 /*! This function is the 'core' of the SPH force computation. A target
- *  particle is specified which may either be local, or reside in the
- *  communication buffer.
+ * particle is specified which may either be local, or reside in the
+ * communication buffer.
  */
 void hydro_evaluate(int target, int mode)
 {
@@ -417,7 +411,7 @@ void hydro_evaluate(int target, int mode)
 	  dy = pos[1] - P[j].Pos[1];
 	  dz = pos[2] - P[j].Pos[2];
 
-#ifdef PERIODIC			/*  find the closest image in the given box size  */
+#ifdef PERIODIC			/* find the closest image in the given box size  */
 	  if(dx > boxHalf_X)
 	    dx -= boxSize_X;
 	  if(dx < -boxHalf_X)
@@ -558,7 +552,7 @@ void hydro_evaluate(int target, int mode)
 
 
 /*! This is a comparison kernel for a sort routine, which is used to group
- *  particles that are going to be exported to the same CPU.
+ * particles that are going to be exported to the same CPU.
  */
 int hydro_compare_key(const void *a, const void *b)
 {

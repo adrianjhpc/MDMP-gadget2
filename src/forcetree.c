@@ -3,23 +3,23 @@
 #include <string.h>
 #include <math.h>
 #include <time.h>
-#include <mpi.h>
 
 #include "allvars.h"
 #include "proto.h"
+#include "mdmp_interface.h" // Added MDMP interface
 
 
-/*! \file forcetree.c
- *  \brief gravitational tree and code for Ewald correction
+/*! \file forcetree.c 
+ * \brief gravitational tree and code for Ewald correction
  *
- *  This file contains the computation of the gravitational force by means
- *  of a tree. The type of tree implemented is a geometrical oct-tree,
- *  starting from a cube encompassing all particles. This cube is
- *  automatically found in the domain decomposition, which also splits up
- *  the global "top-level" tree along node boundaries, moving the particles
- *  of different parts of the tree to separate processors. Tree nodes can
- *  be dynamically updated in drift/kick operations to avoid having to
- *  reconstruct the tree every timestep.
+ * This file contains the computation of the gravitational force by means
+ * of a tree. The type of tree implemented is a geometrical oct-tree,
+ * starting from a cube encompassing all particles. This cube is
+ * automatically found in the domain decomposition, which also splits up
+ * the global "top-level" tree along node boundaries, moving the particles
+ * of different parts of the tree to separate processors. Tree nodes can
+ * be dynamically updated in drift/kick operations to avoid having to
+ * reconstruct the tree every timestep.
  */
 
 /*! auxialiary variable used to set-up non-recursive walk */
@@ -44,7 +44,7 @@ static int first_flag = 0;
 /*! Size of 3D lock-up table for Ewald correction force */
 #define EN  64
 /*! 3D lock-up table for Ewald correction to force and potential. Only one
- *  octant is stored, the rest constructed by using the symmetry
+ * octant is stored, the rest constructed by using the symmetry
  */
 static FLOAT fcorrx[EN + 1][EN + 1][EN + 1];
 static FLOAT fcorry[EN + 1][EN + 1][EN + 1];
@@ -56,7 +56,7 @@ static double fac_intp;
 
 
 /*! This function is a driver routine for constructing the gravitational
- *  oct-tree, which is done by calling a small number of other functions.
+ * oct-tree, which is done by calling a small number of other functions.
  */
 int force_treebuild(int npart)
 {
@@ -75,20 +75,20 @@ int force_treebuild(int npart)
 
 /*! Constructs the gravitational oct-tree.  
  *
- *  The index convention for accessing tree nodes is the following: the
- *  indices 0...NumPart-1 reference single particles, the indices
- *  All.MaxPart.... All.MaxPart+nodes-1 reference tree nodes. `Nodes_base'
- *  points to the first tree node, while `nodes' is shifted such that
- *  nodes[All.MaxPart] gives the first tree node. Finally, node indices
- *  with values 'All.MaxPart + MaxNodes' and larger indicate "pseudo
- *  particles", i.e. multipole moments of top-level nodes that lie on
- *  different CPUs. If such a node needs to be opened, the corresponding
- *  particle must be exported to that CPU. The 'Extnodes' structure
- *  parallels that of 'Nodes'. Its information is only needed for the SPH
- *  part of the computation. (The data is split onto these two structures
- *  as a tuning measure.  If it is merged into 'Nodes' a somewhat bigger
- *  size of the nodes also for gravity would result, which would reduce
- *  cache utilization slightly.
+ * The index convention for accessing tree nodes is the following: the
+ * indices 0...NumPart-1 reference single particles, the indices
+ * All.MaxPart.... All.MaxPart+nodes-1 reference tree nodes. `Nodes_base'
+ * points to the first tree node, while `nodes' is shifted such that
+ * nodes[All.MaxPart] gives the first tree node. Finally, node indices
+ * with values 'All.MaxPart + MaxNodes' and larger indicate "pseudo
+ * particles", i.e. multipole moments of top-level nodes that lie on
+ * different CPUs. If such a node needs to be opened, the corresponding
+ * particle must be exported to that CPU. The 'Extnodes' structure
+ * parallels that of 'Nodes'. Its information is only needed for the SPH
+ * part of the computation. (The data is split onto these two structures
+ * as a tuning measure.  If it is merged into 'Nodes' a somewhat bigger
+ * size of the nodes also for gravity would result, which would reduce
+ * cache utilization slightly.
  */
 int force_treebuild_single(int npart)
 {
@@ -283,11 +283,11 @@ int force_treebuild_single(int npart)
 
 
 /*! This function recursively creates a set of empty tree nodes which
- *  corresponds to the top-level tree for the domain grid. This is done to
- *  ensure that this top-level tree is always "complete" so that we can
- *  easily associate the pseudo-particles of other CPUs with tree-nodes at
- *  a given level in the tree, even when the particle population is so
- *  sparse that some of these nodes are actually empty.
+ * corresponds to the top-level tree for the domain grid. This is done to
+ * ensure that this top-level tree is always "complete" so that we can
+ * easily associate the pseudo-particles of other CPUs with tree-nodes at
+ * a given level in the tree, even when the particle population is so
+ * sparse that some of these nodes are actually empty.
 */
 void force_create_empty_nodes(int no, int topnode, int bits, int x, int y, int z, int *nodecount,
 			      int *nextfree)
@@ -338,10 +338,10 @@ void force_create_empty_nodes(int no, int topnode, int bits, int x, int y, int z
 
 
 /*! this function inserts pseudo-particles which will represent the mass
- *  distribution of the other CPUs. Initially, the mass of the
- *  pseudo-particles is set to zero, and their coordinate is set to the
- *  center of the domain-cell they correspond to. These quantities will be
- *  updated later on.
+ * distribution of the other CPUs. Initially, the mass of the
+ * pseudo-particles is set to zero, and their coordinate is set to the
+ * center of the domain-cell they correspond to. These quantities will be
+ * updated later on.
  */
 void force_insert_pseudo_particles(void)
 {
@@ -405,19 +405,18 @@ void force_insert_pseudo_particles(void)
 
 
 /*! this routine determines the multipole moments for a given internal node
- *  and all its subnodes using a recursive computation.  The result is
- *  stored in the Nodes[] structure in the sequence of this tree-walk.
+ * and all its subnodes using a recursive computation.  The result is
+ * stored in the Nodes[] structure in the sequence of this tree-walk.
  *
- *  Note that the bitflags-variable for each node is used to store in the
- *  lowest bits some special information: Bit 0 flags whether the node
- *  belongs to the top-level tree corresponding to the domain
- *  decomposition, while Bit 1 signals whether the top-level node is
- *  dependent on local mass.
- * 
- *  If UNEQUALSOFTENINGS is set, bits 2-4 give the particle type with
- *  the maximum softening among the particles in the node, and bit 5
- *  flags whether the node contains any particles with lower softening
- *  than that.  
+ * Note that the bitflags-variable for each node is used to store in the
+ * lowest bits some special information: Bit 0 flags whether the node
+ * belongs to the top-level tree corresponding to the domain
+ * decomposition, while Bit 1 signals whether the top-level node is
+ * dependent on local mass.
+ * * If UNEQUALSOFTENINGS is set, bits 2-4 give the particle type with
+ * the maximum softening among the particles in the node, and bit 5
+ * flags whether the node contains any particles with lower softening
+ * than that.  
  */
 void force_update_node_recursive(int no, int sib, int father)
 {
@@ -663,10 +662,10 @@ void force_update_node_recursive(int no, int sib, int father)
 
 
 /*! This function updates the multipole moments of the pseudo-particles
- *  that represent the mass distribution on different CPUs. For that
- *  purpose, it first exchanges the necessary data, and then updates the
- *  top-level tree accordingly. The detailed implementation of these two
- *  tasks is done in separate functions.
+ * that represent the mass distribution on different CPUs. For that
+ * purpose, it first exchanges the necessary data, and then updates the
+ * top-level tree accordingly. The detailed implementation of these two
+ * tasks is done in separate functions.
  */
 void force_update_pseudoparticles(void)
 {
@@ -678,13 +677,13 @@ void force_update_pseudoparticles(void)
 
 
 /*! This function communicates the values of the multipole moments of the
- *  top-level tree-nodes of the domain grid.  This data can then be used to
- *  update the pseudo-particles on each CPU accordingly.
+ * top-level tree-nodes of the domain grid.  This data can then be used to
+ * update the pseudo-particles on each CPU accordingly.
  */
 void force_exchange_pseudodata(void)
 {
   int i, no;
-  MPI_Status status;
+  // MPI_Status status; // Removed, handled internally by MDMP
   int level, sendTask, recvTask;
 
   for(i = DomainMyStart; i <= DomainMyLast; i++)
@@ -716,18 +715,23 @@ void force_exchange_pseudodata(void)
       recvTask = ThisTask ^ level;
 
       if(recvTask < NTask)
-	MPI_Sendrecv(&DomainMoment[DomainStartList[sendTask]],
-		     (DomainEndList[sendTask] - DomainStartList[sendTask] + 1) * sizeof(struct DomainNODE),
-		     MPI_BYTE, recvTask, TAG_DMOM,
-		     &DomainMoment[DomainStartList[recvTask]],
-		     (DomainEndList[recvTask] - DomainStartList[recvTask] + 1) * sizeof(struct DomainNODE),
-		     MPI_BYTE, recvTask, TAG_DMOM, MPI_COMM_WORLD, &status);
+        {
+          // Split MPI_Sendrecv into explicit MDMP_SEND and MDMP_RECV
+          // MDMP macros automatically calculate the byte size based on the struct pointer!
+          MDMP_SEND(&DomainMoment[DomainStartList[sendTask]], 
+                    (DomainEndList[sendTask] - DomainStartList[sendTask] + 1), 
+                    ThisTask, recvTask, TAG_DMOM);
+          
+          MDMP_RECV(&DomainMoment[DomainStartList[recvTask]], 
+                    (DomainEndList[recvTask] - DomainStartList[recvTask] + 1), 
+                    ThisTask, recvTask, TAG_DMOM);
+        }
     }
 
 }
 
 /*! This function updates the top-level tree after the multipole moments of
- *  the pseudo-particles have been updated.
+ * the pseudo-particles have been updated.
  */
 void force_treeupdate_pseudos(void)
 {
@@ -829,7 +833,7 @@ void force_treeupdate_pseudos(void)
 
 
 /*! This function flags nodes in the top-level tree that are dependent on
- *  local particle data.
+ * local particle data.
  */
 void force_flag_localnodes(void)
 {
@@ -876,16 +880,15 @@ void force_flag_localnodes(void)
 }
 
 
-
 /*! This function updates the side-length of tree nodes in case the tree is
- *  not reconstructed, but only drifted.  The grouping of particles to tree
- *  nodes is not changed in this case, but some tree nodes may need to be
- *  enlarged because particles moved out of their original bounds.
+ * not reconstructed, but only drifted.  The grouping of particles to tree
+ * nodes is not changed in this case, but some tree nodes may need to be
+ * enlarged because particles moved out of their original bounds.
  */
 void force_update_len(void)
 {
   int i, no;
-  MPI_Status status;
+  // MPI_Status status; // Removed, handled internally by MDMP
   int level, sendTask, recvTask;
 
   force_update_node_len_local();
@@ -904,21 +907,24 @@ void force_update_len(void)
       recvTask = ThisTask ^ level;
 
       if(recvTask < NTask)
-	MPI_Sendrecv(&DomainTreeNodeLen[DomainStartList[sendTask]],
-		     (DomainEndList[sendTask] - DomainStartList[sendTask] + 1) * sizeof(FLOAT),
-		     MPI_BYTE, recvTask, TAG_NODELEN,
-		     &DomainTreeNodeLen[DomainStartList[recvTask]],
-		     (DomainEndList[recvTask] - DomainStartList[recvTask] + 1) * sizeof(FLOAT),
-		     MPI_BYTE, recvTask, TAG_NODELEN, MPI_COMM_WORLD, &status);
+        {
+          // Split MPI_Sendrecv into explicit MDMP_SEND and MDMP_RECV
+          MDMP_SEND(&DomainTreeNodeLen[DomainStartList[sendTask]], 
+                    (DomainEndList[sendTask] - DomainStartList[sendTask] + 1), 
+                    ThisTask, recvTask, TAG_NODELEN);
+          
+          MDMP_RECV(&DomainTreeNodeLen[DomainStartList[recvTask]], 
+                    (DomainEndList[recvTask] - DomainStartList[recvTask] + 1), 
+                    ThisTask, recvTask, TAG_NODELEN);
+        }
     }
 
   /* Finally, we update the top-level tree. */
   force_update_node_len_toptree();
 }
 
-
 /*! This function recursively enlarges nodes such that they always contain
- *  all their daughter nodes and daughter particles.
+ * all their daughter nodes and daughter particles.
  */
 void force_update_node_len_local(void)
 {
@@ -965,7 +971,7 @@ void force_update_node_len_local(void)
 
 
 /*! This function recursively enlarges nodes of the top-level tree such
- *  that they always contain all their daughter nodes.
+ * that they always contain all their daughter nodes.
  */
 void force_update_node_len_toptree(void)
 {
@@ -1005,16 +1011,16 @@ void force_update_node_len_toptree(void)
 
 
 /*! This function updates the hmax-values in tree nodes that hold SPH
- *  particles. These values are needed to find all neighbors in the
- *  hydro-force computation.  Since the Hsml-values are potentially changed
- *  in the SPH-denity computation, force_update_hmax() should be carried
- *  out just before the hydrodynamical SPH forces are computed, i.e. after
- *  density().
+ * particles. These values are needed to find all neighbors in the
+ * hydro-force computation.  Since the Hsml-values are potentially changed
+ * in the SPH-denity computation, force_update_hmax() should be carried
+ * out just before the hydrodynamical SPH forces are computed, i.e. after
+ * density().
  */
 void force_update_hmax(void)
 {
   int i, no;
-  MPI_Status status;
+  // MPI_Status status; // Removed, handled internally by MDMP
   int level, sendTask, recvTask;
 
   force_update_node_hmax_local();
@@ -1034,12 +1040,16 @@ void force_update_hmax(void)
       recvTask = ThisTask ^ level;
 
       if(recvTask < NTask)
-	MPI_Sendrecv(&DomainHmax[DomainStartList[sendTask]],
-		     (DomainEndList[sendTask] - DomainStartList[sendTask] + 1) * sizeof(FLOAT),
-		     MPI_BYTE, recvTask, TAG_HMAX,
-		     &DomainHmax[DomainStartList[recvTask]],
-		     (DomainEndList[recvTask] - DomainStartList[recvTask] + 1) * sizeof(FLOAT),
-		     MPI_BYTE, recvTask, TAG_HMAX, MPI_COMM_WORLD, &status);
+        {
+          // Split MPI_Sendrecv into explicit MDMP_SEND and MDMP_RECV
+          MDMP_SEND(&DomainHmax[DomainStartList[sendTask]], 
+                    (DomainEndList[sendTask] - DomainStartList[sendTask] + 1), 
+                    ThisTask, recvTask, TAG_HMAX);
+          
+          MDMP_RECV(&DomainHmax[DomainStartList[recvTask]], 
+                    (DomainEndList[recvTask] - DomainStartList[recvTask] + 1), 
+                    ThisTask, recvTask, TAG_HMAX);
+        }
     }
 
 
@@ -1119,9 +1129,9 @@ void force_update_node_hmax_toptree(void)
 
 
 /*! This routine computes the gravitational force for a given local
- *  particle, or for a particle in the communication buffer. Depending on
- *  the value of TypeOfOpeningCriterion, either the geometrical BH
- *  cell-opening criterion, or the `relative' opening criterion is used.
+ * particle, or for a particle in the communication buffer. Depending on
+ * the value of TypeOfOpeningCriterion, either the geometrical BH
+ * cell-opening criterion, or the `relative' opening criterion is used.
  */
 int force_treeevaluate(int target, int mode, double *ewaldcountsum)
 {
@@ -1408,14 +1418,14 @@ int force_treeevaluate(int target, int mode, double *ewaldcountsum)
 
 #ifdef PMGRID
 /*! In the TreePM algorithm, the tree is walked only locally around the
- *  target coordinate.  Tree nodes that fall outside a box of half
- *  side-length Rcut= RCUT*ASMTH*MeshSize can be discarded. The short-range
- *  potential is modified by a complementary error function, multiplied
- *  with the Newtonian form. The resulting short-range suppression compared
- *  to the Newtonian force is tabulated, because looking up from this table
- *  is faster than recomputing the corresponding factor, despite the
- *  memory-access panelty (which reduces cache performance) incurred by the
- *  table.
+ * target coordinate.  Tree nodes that fall outside a box of half
+ * side-length Rcut= RCUT*ASMTH*MeshSize can be discarded. The short-range
+ * potential is modified by a complementary error function, multiplied
+ * with the Newtonian form. The resulting short-range suppression compared
+ * to the Newtonian force is tabulated, because looking up from this table
+ * is faster than recomputing the corresponding factor, despite the
+ * memory-access panelty (which reduces cache performance) incurred by the
+ * table.
  */
 int force_treeevaluate_shortrange(int target, int mode)
 {
@@ -1755,22 +1765,22 @@ int force_treeevaluate_shortrange(int target, int mode)
 
 #ifdef PERIODIC
 /*! This function computes the Ewald correction, and is needed if periodic
- *  boundary conditions together with a pure tree algorithm are used. Note
- *  that the ordinary tree walk does not carry out this correction directly
- *  as it was done in Gadget-1.1. Instead, the tree is walked a second
- *  time. This is actually faster because the "Ewald-Treewalk" can use a
- *  different opening criterion than the normal tree walk. In particular,
- *  the Ewald correction is negligible for particles that are very close,
- *  but it is large for particles that are far away (this is quite
- *  different for the normal direct force). So we can here use a different
- *  opening criterion. Sufficient accuracy is usually obtained if the node
- *  length has dropped to a certain fraction ~< 0.25 of the
- *  BoxLength. However, we may only short-cut the interaction list of the
- *  normal full Ewald tree walk if we are sure that the whole node and all
- *  daughter nodes "lie on the same side" of the periodic boundary,
- *  i.e. that the real tree walk would not find a daughter node or particle
- *  that was mapped to a different nearest neighbour position when the tree
- *  walk would be further refined.
+ * boundary conditions together with a pure tree algorithm are used. Note
+ * that the ordinary tree walk does not carry out this correction directly
+ * as it was done in Gadget-1.1. Instead, the tree is walked a second
+ * time. This is actually faster because the "Ewald-Treewalk" can use a
+ * different opening criterion than the normal tree walk. In particular,
+ * the Ewald correction is negligible for particles that are very close,
+ * but it is large for particles that are far away (this is quite
+ * different for the normal direct force). So we can here use a different
+ * opening criterion. Sufficient accuracy is usually obtained if the node
+ * length has dropped to a certain fraction ~< 0.25 of the
+ * BoxLength. However, we may only short-cut the interaction list of the
+ * normal full Ewald tree walk if we are sure that the whole node and all
+ * daughter nodes "lie on the same side" of the periodic boundary,
+ * i.e. that the real tree walk would not find a daughter node or particle
+ * that was mapped to a different nearest neighbour position when the tree
+ * walk would be further refined.
  */
 int force_treeevaluate_ewald_correction(int target, int mode, double pos_x, double pos_y, double pos_z,
 					double aold)
@@ -2035,8 +2045,8 @@ int force_treeevaluate_ewald_correction(int target, int mode, double pos_x, doub
 
 
 /*! This routine computes the gravitational potential by walking the
- *  tree. The same opening criteria is used as for the gravitational force
- *  walk.
+ * tree. The same opening criteria is used as for the gravitational force
+ * walk.
  */
 void force_treeevaluate_potential(int target, int mode)
 {
@@ -2296,8 +2306,8 @@ void force_treeevaluate_potential(int target, int mode)
 
 #ifdef PMGRID
 /*! This function computes the short-range potential when the TreePM
- *  algorithm is used. This potential is the Newtonian potential, modified
- *  by a complementary error function.
+ * algorithm is used. This potential is the Newtonian potential, modified
+ * by a complementary error function.
  */
 void force_treeevaluate_potential_shortrange(int target, int mode)
 {
@@ -2451,7 +2461,11 @@ void force_treeevaluate_potential_shortrange(int target, int mode)
 
 	  if(mode == 1)
 	    {
-	      if((nop->u.d.bitflags & 3) == 1)	/* if it's a top-level node which does not contain local particles */
+	      if((nop->u.d.bitflags & 3) == 1)	/* if it's a top-level node
+						 * which does not contain
+						 * local particles we can
+						 * continue at this point
+						 */
 		{
 		  no = nop->u.d.sibling;
 		  continue;
@@ -2503,6 +2517,8 @@ void force_treeevaluate_potential_shortrange(int target, int mode)
 		  no = nop->u.d.nextnode;
 		  continue;
 		}
+
+	      /* check in addition whether we lie inside the cell */
 
 	      if(fabs(nop->center[0] - pos_x) < 0.60 * nop->len)
 		{
@@ -2613,9 +2629,9 @@ void force_treeevaluate_potential_shortrange(int target, int mode)
 
 
 /*! This function allocates the memory used for storage of the tree and of
- *  auxiliary arrays needed for tree-walk and link-lists.  Usually,
- *  maxnodes approximately equal to 0.7*maxpart is sufficient to store the
- *  tree for up to maxpart particles.
+ * auxiliary arrays needed for tree-walk and link-lists.  Usually,
+ * maxnodes approximately equal to 0.7*maxpart is sufficient to store the
+ * tree for up to maxpart particles.
  */
 void force_treeallocate(int maxnodes, int maxpart)
 {
@@ -2680,7 +2696,7 @@ void force_treeallocate(int maxnodes, int maxpart)
 
 
 /*! This function frees the memory allocated for the tree, i.e. it frees
- *  the space allocated by the function force_treeallocate().
+ * the space allocated by the function force_treeallocate().
  */
 void force_treefree(void)
 {
@@ -2694,9 +2710,9 @@ void force_treefree(void)
 
 
 /*! This function does the force computation with direct summation for the
- *  specified particle in the communication buffer. This can be useful for
- *  debugging purposes, in particular for explicit checks of the force
- *  accuracy.
+ * specified particle in the communication buffer. This can be useful for
+ * debugging purposes, in particular for explicit checks of the force
+ * accuracy.
  */
 #ifdef FORCETEST
 int force_treeevaluate_direct(int target, int mode)
@@ -2826,9 +2842,9 @@ int force_treeevaluate_direct(int target, int mode)
 
 
 /*! This function dumps some of the basic particle data to a file. In case
- *  the tree construction fails, it is called just before the run
- *  terminates with an error message. Examination of the generated file may
- *  then give clues to what caused the problem.
+ * the tree construction fails, it is called just before the run
+ * terminates with an error message. Examination of the generated file may
+ * then give clues to what caused the problem.
  */
 void dump_particles(void)
 {
@@ -2857,17 +2873,17 @@ void dump_particles(void)
 #ifdef PERIODIC
 
 /*! This function initializes tables with the correction force and the
- *  correction potential due to the periodic images of a point mass located
- *  at the origin. These corrections are obtained by Ewald summation. (See
- *  Hernquist, Bouchet, Suto, ApJS, 1991, 75, 231) The correction fields
- *  are used to obtain the full periodic force if periodic boundaries
- *  combined with the pure tree algorithm are used. For the TreePM
- *  algorithm, the Ewald correction is not used.
+ * correction potential due to the periodic images of a point mass located
+ * at the origin. These corrections are obtained by Ewald summation. (See
+ * Hernquist, Bouchet, Suto, ApJS, 1991, 75, 231) The correction fields
+ * are used to obtain the full periodic force if periodic boundaries
+ * combined with the pure tree algorithm are used. For the TreePM
+ * algorithm, the Ewald correction is not used.
  *
- *  The correction fields are stored on disk once they are computed. If a
- *  corresponding file is found, they are loaded from disk to speed up the
- *  initialization.  The Ewald summation is done in parallel, i.e. the
- *  processors share the work to compute the tables if needed.
+ * The correction fields are stored on disk once they are computed. If a
+ * corresponding file is found, they are loaded from disk to speed up the
+ * initialization.  The Ewald summation is done in parallel, i.e. the
+ * processors share the work to compute the tables if needed.
  */
 void ewald_init(void)
 {
@@ -2962,17 +2978,10 @@ void ewald_init(void)
 	  if(task == (NTask - 1))
 	    len = (EN + 1) * (EN + 1) * (EN + 1) - beg;
 
-#ifdef DOUBLEPRECISION
-	  MPI_Bcast(&fcorrx[0][0][beg], len, MPI_DOUBLE, task, MPI_COMM_WORLD);
-	  MPI_Bcast(&fcorry[0][0][beg], len, MPI_DOUBLE, task, MPI_COMM_WORLD);
-	  MPI_Bcast(&fcorrz[0][0][beg], len, MPI_DOUBLE, task, MPI_COMM_WORLD);
-	  MPI_Bcast(&potcorr[0][0][beg], len, MPI_DOUBLE, task, MPI_COMM_WORLD);
-#else
-	  MPI_Bcast(&fcorrx[0][0][beg], len, MPI_FLOAT, task, MPI_COMM_WORLD);
-	  MPI_Bcast(&fcorry[0][0][beg], len, MPI_FLOAT, task, MPI_COMM_WORLD);
-	  MPI_Bcast(&fcorrz[0][0][beg], len, MPI_FLOAT, task, MPI_COMM_WORLD);
-	  MPI_Bcast(&potcorr[0][0][beg], len, MPI_FLOAT, task, MPI_COMM_WORLD);
-#endif
+	  MDMP_BCAST(&fcorrx[0][0][beg], len, task); // Converted to MDMP
+	  MDMP_BCAST(&fcorry[0][0][beg], len, task); // Converted to MDMP
+	  MDMP_BCAST(&fcorrz[0][0][beg], len, task); // Converted to MDMP
+	  MDMP_BCAST(&potcorr[0][0][beg], len, task); // Converted to MDMP
 	}
 
       if(ThisTask == 0)
@@ -3012,10 +3021,10 @@ void ewald_init(void)
 
 
 /*! This function looks up the correction force due to the infinite number
- *  of periodic particle/node images. We here use trilinear interpolation
- *  to get it from the precomputed tables, which contain one octant
- *  around the target particle at the origin. The other octants are
- *  obtained from it by exploiting the symmetry properties.
+ * of periodic particle/node images. We here use trilinear interpolation
+ * to get it from the precomputed tables, which contain one octant
+ * around the target particle at the origin. The other octants are
+ * obtained from it by exploiting the symmetry properties.
  */
 #ifdef FORCETEST
 void ewald_corr(double dx, double dy, double dz, double *fper)
@@ -3102,10 +3111,10 @@ void ewald_corr(double dx, double dy, double dz, double *fper)
 
 
 /*! This function looks up the correction potential due to the infinite
- *  number of periodic particle/node images. We here use tri-linear
- *  interpolation to get it from the precomputed table, which contains
- *  one octant around the target particle at the origin. The other
- *  octants are obtained from it by exploiting symmetry properties.
+ * number of periodic particle/node images. We here use tri-linear
+ * interpolation to get it from the precomputed table, which contains
+ * one octant around the target particle at the origin. The other
+ * octants are obtained from it by exploiting symmetry properties.
  */
 double ewald_pot_corr(double dx, double dy, double dz)
 {
@@ -3158,7 +3167,7 @@ double ewald_pot_corr(double dx, double dy, double dz)
 
 
 /*! This function computes the potential correction term by means of Ewald
- *  summation.
+ * summation.
  */
 double ewald_psi(double x[3])
 {
@@ -3199,7 +3208,7 @@ double ewald_psi(double x[3])
 
 
 /*! This function computes the force correction term (difference between full
- *  force of infinite lattice and nearest image) by Ewald summation.
+ * force of infinite lattice and nearest image) by Ewald summation.
  */
 void ewald_force(int iii, int jjj, int kkk, double x[3], double force[3])
 {

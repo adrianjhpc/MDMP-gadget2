@@ -3,30 +3,30 @@
 #include <string.h>
 #include <math.h>
 #include <string.h>
-#include <mpi.h>
 
 #include "allvars.h"
 #include "proto.h"
+#include "mdmp_interface.h" // Added MDMP interface
 
 
 /*! \file read_ic.c
- *  \brief Read initial conditions in one of Gadget's file formats
+ * \brief Read initial conditions in one of Gadget's file formats
  */
 
 /*! This function reads initial conditions, in one of the three possible file
- *  formats currently supported by Gadget.  Note: When a snapshot file is
- *  started from initial conditions (start-option 0), not all the information
- *  in the header is used, in particular, the STARTING TIME needs to be set in
- *  the parameterfile.  Also, for gas particles, only the internal energy is
- *  read, the density and mean molecular weight will be recomputed by the
- *  code.  When InitGasTemp>0 is given, the gas temperature will be initialzed
- *  to this value assuming a mean colecular weight either corresponding to
- *  complete neutrality, or full ionization.
+ * formats currently supported by Gadget.  Note: When a snapshot file is
+ * started from initial conditions (start-option 0), not all the information
+ * in the header is used, in particular, the STARTING TIME needs to be set in
+ * the parameterfile.  Also, for gas particles, only the internal energy is
+ * read, the density and mean molecular weight will be recomputed by the
+ * code.  When InitGasTemp>0 is given, the gas temperature will be initialzed
+ * to this value assuming a mean colecular weight either corresponding to
+ * complete neutrality, or full ionization.
  *
- *  However, when the code is started with start-option 2, then all the this
- *  data in the snapshot files is preserved, i.e. this is also the way to
- *  resume a simulation from a snapshot file in case a regular restart file is
- *  not available.
+ * However, when the code is started with start-option 2, then all the this
+ * data in the snapshot files is preserved, i.e. this is also the way to
+ * resume a simulation from a snapshot file in case a regular restart file is
+ * not available.
  */
 void read_ic(char *fname)
 {
@@ -66,7 +66,7 @@ void read_ic(char *fname)
 	{
 	  if(ThisTask == (groupMaster + gr))	/* ok, it's this processor's turn */
 	    read_file(buf, ThisTask, ThisTask);
-	  MPI_Barrier(MPI_COMM_WORLD);
+	  MDMP_COMM_SYNC(); // Converted to MDMP
 	}
 
       rest_files -= NTask;
@@ -98,7 +98,7 @@ void read_ic(char *fname)
 	{
 	  if((filenr / All.NumFilesWrittenInParallel) == gr)	/* ok, it's this processor's turn */
 	    read_file(buf, masterTask, lastTask);
-	  MPI_Barrier(MPI_COMM_WORLD);
+	  MDMP_COMM_SYNC(); // Converted to MDMP
 	}
     }
 
@@ -145,7 +145,7 @@ void read_ic(char *fname)
   for(i = 0; i < N_gas; i++)
     SphP[i].Entropy = dmax(All.MinEgySpec, SphP[i].Entropy);
 
-  MPI_Barrier(MPI_COMM_WORLD);
+  MDMP_COMM_SYNC(); // Converted to MDMP
 
   if(ThisTask == 0)
     {
@@ -163,7 +163,7 @@ void read_ic(char *fname)
 
 
 /*! This function reads out the buffer that was filled with particle data, and
- *  stores it at the appropriate place in the particle structures.
+ * stores it at the appropriate place in the particle structures.
  */
 void empty_read_buffer(enum iofields blocknr, int offset, int pc, int type)
 {
@@ -239,14 +239,14 @@ void empty_read_buffer(enum iofields blocknr, int offset, int pc, int type)
 
 
 /*! This function reads a snapshot file and distributes the data it contains
- *  to tasks 'readTask' to 'lastTask'.
+ * to tasks 'readTask' to 'lastTask'.
  */
 void read_file(char *fname, int readTask, int lastTask)
 {
   int blockmaxlen;
   int i, n_in_file, n_for_this_task, ntask, pc, offset = 0, task;
   int blksize1, blksize2;
-  MPI_Status status;
+  // MPI_Status status; // Removed, handled internally by MDMP
   FILE *fd = 0;
   int nall;
   int type;
@@ -317,10 +317,10 @@ void read_file(char *fname, int readTask, int lastTask)
 #endif
 
       for(task = readTask + 1; task <= lastTask; task++)
-	MPI_Ssend(&header, sizeof(header), MPI_BYTE, task, TAG_HEADER, MPI_COMM_WORLD);
+	MDMP_SEND(&header, 1, ThisTask, task, TAG_HEADER); // Converted to MDMP
     }
   else
-    MPI_Recv(&header, sizeof(header), MPI_BYTE, readTask, TAG_HEADER, MPI_COMM_WORLD, &status);
+    MDMP_RECV(&header, 1, ThisTask, readTask, TAG_HEADER); // Converted to MDMP
 
 
   if(All.TotNumPart == 0)
@@ -536,12 +536,10 @@ void read_file(char *fname, int readTask, int lastTask)
 				}
 
 			      if(ThisTask == readTask && task != readTask)
-				MPI_Ssend(CommBuffer, bytes_per_blockelement * pc, MPI_BYTE, task, TAG_PDATA,
-					  MPI_COMM_WORLD);
+				MDMP_SEND(CommBuffer, bytes_per_blockelement * pc, ThisTask, task, TAG_PDATA); // Converted to MDMP
 
 			      if(ThisTask != readTask && task == ThisTask)
-				MPI_Recv(CommBuffer, bytes_per_blockelement * pc, MPI_BYTE, readTask,
-					 TAG_PDATA, MPI_COMM_WORLD, &status);
+				MDMP_RECV(CommBuffer, bytes_per_blockelement * pc, ThisTask, readTask, TAG_PDATA); // Converted to MDMP
 
 			      if(ThisTask == task)
 				{
@@ -564,7 +562,7 @@ void read_file(char *fname, int readTask, int lastTask)
 		      if(blksize1 != blksize2)
 			{
 			  printf("incorrect block-sizes detected!\n");
-			  printf("Task=%d   blocknr=%d  blksize1=%d  blksize2=%d\n", ThisTask, blocknr,
+			  printf("Task=%d  blocknr=%d  blksize1=%d  blksize2=%d\n", ThisTask, blocknr,
 				 blksize1, blksize2);
 			  fflush(stdout);
 			  endrun(1889);
@@ -610,7 +608,7 @@ void read_file(char *fname, int readTask, int lastTask)
 
 
 /*! This function determines onto how many files a given snapshot is
- *  distributed.
+ * distributed.
  */
 int find_files(char *fname)
 {
@@ -665,7 +663,7 @@ int find_files(char *fname)
 	}
     }
 
-  MPI_Bcast(&header, sizeof(header), MPI_BYTE, 0, MPI_COMM_WORLD);
+  MDMP_BCAST(&header, 1, 0); // Converted to MDMP
 
   if(header.num_files > 0)
     return header.num_files;
@@ -698,7 +696,7 @@ int find_files(char *fname)
 	}
     }
 
-  MPI_Bcast(&header, sizeof(header), MPI_BYTE, 0, MPI_COMM_WORLD);
+  MDMP_BCAST(&header, 1, 0); // Converted to MDMP
 
   if(header.num_files > 0)
     return header.num_files;
@@ -717,9 +715,9 @@ int find_files(char *fname)
 
 
 /*! This function assigns a certain number of files to processors, such that
- *  each processor is exactly assigned to one file, and the number of cpus per
- *  file is as homogenous as possible. The number of files may at most be
- *  equal to the number of processors.
+ * each processor is exactly assigned to one file, and the number of cpus per
+ * file is as homogenous as possible. The number of files may at most be
+ * equal to the number of processors.
  */
 void distribute_file(int nfiles, int firstfile, int firsttask, int lasttask, int *filenr, int *master,
 		     int *last)
@@ -758,7 +756,7 @@ void distribute_file(int nfiles, int firstfile, int firsttask, int lasttask, int
 
 
 /*! This function reads the header information in case the HDF5 file format is
- *  used.
+ * used.
  */
 #ifdef HAVE_HDF5
 void read_header_attributes_in_hdf5(char *fname)

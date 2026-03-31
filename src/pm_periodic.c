@@ -3,7 +3,6 @@
 #include <string.h>
 #include <math.h>
 #include <float.h>
-#include <mpi.h>
 
 /*! \file pm_periodic.c
  *  \brief routines for periodic PM-force computation

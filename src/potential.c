@@ -8,16 +8,16 @@
 
 #include "allvars.h"
 #include "proto.h"
-
+#include "mdmp_interface.h" // Added MDMP interface
 
 /*! \file potential.c 
- *  \brief Computation of the gravitational potential of particles
+ * \brief Computation of the gravitational potential of particles
  */
 
 
 /*! This function computes the gravitational potential for ALL the particles.
- *  First, the (short-range) tree potential is computed, and then, if needed,
- *  the long range PM potential is added.
+ * First, the (short-range) tree potential is computed, and then, if needed,
+ * the long range PM potential is added.
  */
 void compute_potential(void)
 {
@@ -31,7 +31,7 @@ void compute_potential(void)
   int *nsend, *noffset, *nsend_local, *nbuffer, *ndonelist, *numlist;
   double fac;
   double t0, t1, tstart, tend;
-  MPI_Status status;
+  // MPI_Status status; // Removed, handled internally by MDMP
   double r2;
 
   t0 = second();
@@ -63,7 +63,7 @@ void compute_potential(void)
   All.CPU_TreeConstruction += timediff(tstart, tend);
 
   numlist = malloc(NTask * sizeof(int) * NTask);
-  MPI_Allgather(&NumPart, 1, MPI_INT, numlist, 1, MPI_INT, MPI_COMM_WORLD);
+  MDMP_ALLGATHER(&NumPart, 1, numlist); // Converted to MDMP
   for(i = 0, ntot = 0; i < NTask; i++)
     ntot += numlist[i];
   free(numlist);
@@ -129,7 +129,7 @@ void compute_potential(void)
       for(j = 1, noffset[0] = 0; j < NTask; j++)
 	noffset[j] = noffset[j - 1] + nsend_local[j - 1];
 
-      MPI_Allgather(nsend_local, NTask, MPI_INT, nsend, NTask, MPI_INT, MPI_COMM_WORLD);
+      MDMP_ALLGATHER(nsend_local, NTask, nsend); // Converted to MDMP
 
       /* now do the particles that need to be exported */
 
@@ -157,12 +157,9 @@ void compute_potential(void)
 		  if(nsend[ThisTask * NTask + recvTask] > 0 || nsend[recvTask * NTask + ThisTask] > 0)
 		    {
 		      /* get the particles */
-		      MPI_Sendrecv(&GravDataIn[noffset[recvTask]],
-				   nsend_local[recvTask] * sizeof(struct gravdata_in), MPI_BYTE,
-				   recvTask, TAG_POTENTIAL_A,
-				   &GravDataGet[nbuffer[ThisTask]],
-				   nsend[recvTask * NTask + ThisTask] * sizeof(struct gravdata_in), MPI_BYTE,
-				   recvTask, TAG_POTENTIAL_A, MPI_COMM_WORLD, &status);
+		      // Split MPI_Sendrecv into explicit MDMP_SEND and MDMP_RECV
+		      MDMP_SEND(&GravDataIn[noffset[recvTask]], nsend_local[recvTask], ThisTask, recvTask, TAG_POTENTIAL_A);
+		      MDMP_RECV(&GravDataGet[nbuffer[ThisTask]], nsend[recvTask * NTask + ThisTask], ThisTask, recvTask, TAG_POTENTIAL_A);
 		    }
 		}
 
@@ -204,12 +201,9 @@ void compute_potential(void)
 		  if(nsend[ThisTask * NTask + recvTask] > 0 || nsend[recvTask * NTask + ThisTask] > 0)
 		    {
 		      /* send the results */
-		      MPI_Sendrecv(&GravDataResult[nbuffer[ThisTask]],
-				   nsend[recvTask * NTask + ThisTask] * sizeof(struct gravdata_in),
-				   MPI_BYTE, recvTask, TAG_POTENTIAL_B,
-				   &GravDataOut[noffset[recvTask]],
-				   nsend_local[recvTask] * sizeof(struct gravdata_in),
-				   MPI_BYTE, recvTask, TAG_POTENTIAL_B, MPI_COMM_WORLD, &status);
+		      // Split MPI_Sendrecv into explicit MDMP_SEND and MDMP_RECV
+		      MDMP_SEND(&GravDataResult[nbuffer[ThisTask]], nsend[recvTask * NTask + ThisTask], ThisTask, recvTask, TAG_POTENTIAL_B);
+		      MDMP_RECV(&GravDataOut[noffset[recvTask]], nsend_local[recvTask], ThisTask, recvTask, TAG_POTENTIAL_B);
 
 		      /* add the result to the particles */
 		      for(j = 0; j < nsend_local[recvTask]; j++)
@@ -229,7 +223,7 @@ void compute_potential(void)
 	  level = ngrp - 1;
 	}
 
-      MPI_Allgather(&ndone, 1, MPI_INT, ndonelist, 1, MPI_INT, MPI_COMM_WORLD);
+      MDMP_ALLGATHER(&ndone, 1, ndonelist); // Converted to MDMP
       for(j = 0; j < NTask; j++)
 	ntotleft -= ndonelist[j];
     }

@@ -6,24 +6,24 @@
 
 #include "allvars.h"
 #include "proto.h"
-
+#include "mdmp_interface.h" // Added MDMP interface
 
 
 /*! \file domain.c
- *  \brief code for domain decomposition
+ * \brief code for domain decomposition
  *
- *  This file contains the code for the domain decomposition of the
- *  simulation volume.  The domains are constructed from disjoint subsets
- *  of the leaves of a fiducial top-level tree that covers the full
- *  simulation volume. Domain boundaries hence run along tree-node
- *  divisions of a fiducial global BH tree. As a result of this method, the
- *  tree force are in principle strictly independent of the way the domains
- *  are cut. The domain decomposition can be carried out for an arbitrary
- *  number of CPUs. Individual domains are not cubical, but spatially
- *  coherent since the leaves are traversed in a Peano-Hilbert order and
- *  individual domains form segments along this order.  This also ensures
- *  that each domain has a small surface to volume ratio, which minimizes
- *  communication.
+ * This file contains the code for the domain decomposition of the
+ * simulation volume.  The domains are constructed from disjoint subsets
+ * of the leaves of a fiducial top-level tree that covers the full
+ * simulation volume. Domain boundaries hence run along tree-node
+ * divisions of a fiducial global BH tree. As a result of this method, the
+ * tree force are in principle strictly independent of the way the domains
+ * are cut. The domain decomposition can be carried out for an arbitrary
+ * number of CPUs. Individual domains are not cubical, but spatially
+ * coherent since the leaves are traversed in a Peano-Hilbert order and
+ * individual domains form segments along this order.  This also ensures
+ * that each domain has a small surface to volume ratio, which minimizes
+ * communication.
  */
 
 #define TOPNODEFACTOR  20.0
@@ -32,7 +32,7 @@
 
 
 /*! toGo[task*NTask + partner] gives the number of particles in task 'task'
- *  that have to go to task 'partner'
+ * that have to go to task 'partner'
  */
 static int *toGo, *toGoSph;
 static int *local_toGo, *local_toGoSph;
@@ -49,15 +49,15 @@ static struct topnode_exchange
   peanokey Startkey;
   int Count;
 }
- *toplist, *toplist_local;
+  *toplist, *toplist_local;
 
 
 
 /*! This is the main routine for the domain decomposition.  It acts as a
- *  driver routine that allocates various temporary buffers, maps the
- *  particles back onto the periodic box if needed, and then does the
- *  domain decomposition, and a final Peano-Hilbert order of all particles
- *  as a tuning measure.
+ * driver routine that allocates various temporary buffers, maps the
+ * particles back onto the periodic box if needed, and then does the
+ * domain decomposition, and a final Peano-Hilbert order of all particles
+ * as a tuning measure.
  */
 void domain_Decomposition(void)
 {
@@ -102,8 +102,8 @@ void domain_Decomposition(void)
       list_loadsph = malloc(sizeof(int) * NTask);
       list_work = malloc(sizeof(double) * NTask);
 
-      MPI_Allgather(&NumPart, 1, MPI_INT, list_NumPart, 1, MPI_INT, MPI_COMM_WORLD);
-      MPI_Allgather(&N_gas, 1, MPI_INT, list_N_gas, 1, MPI_INT, MPI_COMM_WORLD);
+      MDMP_ALLGATHER(&NumPart, 1, list_NumPart); // Converted to MDMP
+      MDMP_ALLGATHER(&N_gas, 1, list_N_gas); // Converted to MDMP
 
       maxload = All.MaxPart * REDUC_FAC;
       maxloadsph = All.MaxPartSph * REDUC_FAC;
@@ -146,10 +146,10 @@ void domain_Decomposition(void)
 
 
 /*! This function carries out the actual domain decomposition for all
- *  particle types. It will try to balance the work-load for each domain,
- *  as estimated based on the P[i]-GravCost values.  The decomposition will
- *  respect the maximum allowed memory-imbalance given by the value of
- *  PartAllocFactor.
+ * particle types. It will try to balance the work-load for each domain,
+ * as estimated based on the P[i]-GravCost values.  The decomposition will
+ * respect the maximum allowed memory-imbalance given by the value of
+ * PartAllocFactor.
  */
 void domain_decompose(void)
 {
@@ -169,7 +169,7 @@ void domain_decompose(void)
    * MPI_Allreduce() to sum the total particle numbers 
    */
   temp = malloc(NTask * 6 * sizeof(int));
-  MPI_Allgather(NtypeLocal, 6, MPI_INT, temp, 6, MPI_INT, MPI_COMM_WORLD);
+  MDMP_ALLGATHER(NtypeLocal, 6, temp); // Converted to MDMP
   for(i = 0; i < 6; i++)
     {
       Ntype[i] = 0;
@@ -310,19 +310,19 @@ void domain_decompose(void)
 }
 
 /*! This function tries to find a split point in a range of cells in the
- *  domain-grid.  The range of cells starts at 'first', and ends at 'last'
- *  (inclusively). The number of cpus that holds the range is 'ncpu', with
- *  the first cpu given by 'cpustart'. If more than 2 cpus are to be split,
- *  the function calls itself recursively. The division tries to achieve a
- *  best particle-load balance under the constraint that 'maxload' and
- *  'maxloadsph' may not be exceeded, and that each cpu holds at least one
- *  cell from the domaingrid. If such a decomposition cannot be achieved, a
- *  non-zero error code is returned.
+ * domain-grid.  The range of cells starts at 'first', and ends at 'last'
+ * (inclusively). The number of cpus that holds the range is 'ncpu', with
+ * the first cpu given by 'cpustart'. If more than 2 cpus are to be split,
+ * the function calls itself recursively. The division tries to achieve a
+ * best particle-load balance under the constraint that 'maxload' and
+ * 'maxloadsph' may not be exceeded, and that each cpu holds at least one
+ * cell from the domaingrid. If such a decomposition cannot be achieved, a
+ * non-zero error code is returned.
  *
- *  After successful completion, DomainMyStart[] and DomainMyLast[] contain
- *  the first and last cell of the domaingrid assigned to the local task
- *  for the given type. Also, DomainTask[] contains for each cell the task
- *  it was assigned to.
+ * After successful completion, DomainMyStart[] and DomainMyLast[] contain
+ * the first and last cell of the domaingrid assigned to the local task
+ * for the given type. Also, DomainTask[] contains for each cell the task
+ * it was assigned to.
  */
 int domain_findSplit(int cpustart, int ncpu, int first, int last)
 {
@@ -438,11 +438,11 @@ int domain_findSplit(int cpustart, int ncpu, int first, int last)
 
 
 /*! This function tries to improve the domain decomposition found by
- *  domain_findSplit() with respect to work-load balance.  To this end, the
- *  boundaries in the existing domain-split solution (which was found by
- *  trying to balance the particle load) are shifted as long as this leads
- *  to better work-load while still remaining within the allowed
- *  memory-imbalance constraints.
+ * domain_findSplit() with respect to work-load balance.  To this end, the
+ * boundaries in the existing domain-split solution (which was found by
+ * trying to balance the particle load) are shifted as long as this leads
+ * to better work-load while still remaining within the allowed
+ * memory-imbalance constraints.
  */
 void domain_shiftSplit(void)
 {
@@ -525,11 +525,11 @@ void domain_shiftSplit(void)
 
 
 /*! This function counts how many particles have to be exchanged between
- *  two CPUs according to the domain split. If the CPUs are already quite
- *  full and hold data from other CPUs as well, not all the particles may
- *  be exchanged at once. In this case the communication phase has to be
- *  repeated, until enough of the third-party particles have been moved
- *  away such that the decomposition can be completed.
+ * two CPUs according to the domain split. If the CPUs are already quite
+ * full and hold data from other CPUs as well, not all the particles may
+ * be exchanged at once. In this case the communication phase has to be
+ * repeated, until enough of the third-party particles have been moved
+ * away such that the decomposition can be completed.
  */
 void domain_findExchangeNumbers(int task, int partner, int sphflag, int *send, int *recv)
 {
@@ -589,13 +589,13 @@ void domain_findExchangeNumbers(int task, int partner, int sphflag, int *send, i
 
 
 /*! This function exchanges particles between two CPUs according to the
- *  domain split. In doing this, the memory boundaries which may restrict
- *  the exhange process are observed.
+ * domain split. In doing this, the memory boundaries which may restrict
+ * the exhange process are observed.
  */
 void domain_exchangeParticles(int partner, int sphflag, int send_count, int recv_count)
 {
   int i, no, n, count, rep;
-  MPI_Status status;
+  // MPI_Status status; // Handled internally by MDMP
 
   for(n = 0, count = 0; count < send_count && n < NumPart; n++)
     {
@@ -664,15 +664,12 @@ void domain_exchangeParticles(int partner, int sphflag, int send_count, int recv
 	{
 	  if(send_count > 0)
 	    {
-	      MPI_Ssend(&DomainPartBuf[0], send_count * sizeof(struct particle_data), MPI_BYTE, partner,
-			TAG_PDATA, MPI_COMM_WORLD);
+	      MDMP_SEND(&DomainPartBuf[0], send_count, ThisTask, partner, TAG_PDATA); // Converted to MDMP
 
-	      MPI_Ssend(&DomainKeyBuf[0], send_count * sizeof(peanokey), MPI_BYTE, partner, TAG_KEY,
-			MPI_COMM_WORLD);
+	      MDMP_SEND(&DomainKeyBuf[0], send_count, ThisTask, partner, TAG_KEY); // Converted to MDMP
 
 	      if(sphflag)
-		MPI_Ssend(&DomainSphBuf[0], send_count * sizeof(struct sph_particle_data), MPI_BYTE, partner,
-			  TAG_SPHDATA, MPI_COMM_WORLD);
+		MDMP_SEND(&DomainSphBuf[0], send_count, ThisTask, partner, TAG_SPHDATA); // Converted to MDMP
 	    }
 	}
 
@@ -699,21 +696,16 @@ void domain_exchangeParticles(int partner, int sphflag, int send_count, int recv
 			}
 		    }
 
-		  MPI_Recv(&P[N_gas], recv_count * sizeof(struct particle_data), MPI_BYTE, partner, TAG_PDATA,
-			   MPI_COMM_WORLD, &status);
-		  MPI_Recv(&Key[N_gas], recv_count * sizeof(peanokey), MPI_BYTE, partner, TAG_KEY,
-			   MPI_COMM_WORLD, &status);
-		  MPI_Recv(&SphP[N_gas], recv_count * sizeof(struct sph_particle_data), MPI_BYTE, partner,
-			   TAG_SPHDATA, MPI_COMM_WORLD, &status);
+		  MDMP_RECV(&P[N_gas], recv_count, ThisTask, partner, TAG_PDATA); // Converted to MDMP
+		  MDMP_RECV(&Key[N_gas], recv_count, ThisTask, partner, TAG_KEY); // Converted to MDMP
+		  MDMP_RECV(&SphP[N_gas], recv_count, ThisTask, partner, TAG_SPHDATA); // Converted to MDMP
 
 		  N_gas += recv_count;
 		}
 	      else
 		{
-		  MPI_Recv(&P[NumPart], recv_count * sizeof(struct particle_data), MPI_BYTE, partner,
-			   TAG_PDATA, MPI_COMM_WORLD, &status);
-		  MPI_Recv(&Key[NumPart], recv_count * sizeof(peanokey), MPI_BYTE, partner,
-			   TAG_KEY, MPI_COMM_WORLD, &status);
+		  MDMP_RECV(&P[NumPart], recv_count, ThisTask, partner, TAG_PDATA); // Converted to MDMP
+		  MDMP_RECV(&Key[NumPart], recv_count, ThisTask, partner, TAG_KEY); // Converted to MDMP
 		}
 
 	      NumPart += recv_count;
@@ -723,8 +715,8 @@ void domain_exchangeParticles(int partner, int sphflag, int send_count, int recv
 }
 
 /*! This function determines how many particles that are currently stored
- *  on the local CPU have to be moved off according to the domain
- *  decomposition.
+ * on the local CPU have to be moved off according to the domain
+ * decomposition.
  */
 void domain_countToGo(void)
 {
@@ -753,14 +745,14 @@ void domain_countToGo(void)
 	}
     }
 
-  MPI_Allgather(local_toGo, NTask, MPI_INT, toGo, NTask, MPI_INT, MPI_COMM_WORLD);
-  MPI_Allgather(local_toGoSph, NTask, MPI_INT, toGoSph, NTask, MPI_INT, MPI_COMM_WORLD);
+  MDMP_ALLGATHER(local_toGo, NTask, toGo); // Converted to MDMP
+  MDMP_ALLGATHER(local_toGoSph, NTask, toGoSph); // Converted to MDMP
 }
 
 
 /*! This function walks the global top tree in order to establish the
- *  number of leaves it has. These leaves are distributed to different
- *  processors.
+ * number of leaves it has. These leaves are distributed to different
+ * processors.
  */
 void domain_walktoptree(int no)
 {
@@ -779,9 +771,9 @@ void domain_walktoptree(int no)
 }
 
 /*! This routine bins the particles onto the domain-grid, i.e. it sums up the
- *  total number of particles and the total amount of work in each of the
- *  domain-cells. This information forms the basis for the actual decision on
- *  the adopted domain decomposition.
+ * total number of particles and the total amount of work in each of the
+ * domain-cells. This information forms the basis for the actual decision on
+ * the adopted domain decomposition.
  */
 void domain_sumCost(void)
 {
@@ -829,9 +821,9 @@ void domain_sumCost(void)
 	local_DomainCountSph[no] += 1;
     }
 
-  MPI_Allreduce(local_DomainWork, DomainWork, NTopleaves, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
-  MPI_Allreduce(local_DomainCount, DomainCount, NTopleaves, MPI_INT, MPI_SUM, MPI_COMM_WORLD);
-  MPI_Allreduce(local_DomainCountSph, DomainCountSph, NTopleaves, MPI_INT, MPI_SUM, MPI_COMM_WORLD);
+  MDMP_ALLREDUCE(local_DomainWork, DomainWork, NTopleaves, MDMP_SUM); // Converted to MDMP
+  MDMP_ALLREDUCE(local_DomainCount, DomainCount, NTopleaves, MDMP_SUM); // Converted to MDMP
+  MDMP_ALLREDUCE(local_DomainCountSph, DomainCountSph, NTopleaves, MDMP_SUM); // Converted to MDMP
 
 
   free(local_DomainCountSph);
@@ -866,8 +858,8 @@ void domain_findExtent(void)
 	}
     }
 
-  MPI_Allreduce(xmin, xmin_glob, 3, MPI_DOUBLE, MPI_MIN, MPI_COMM_WORLD);
-  MPI_Allreduce(xmax, xmax_glob, 3, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
+  MDMP_ALLREDUCE(xmin, xmin_glob, 3, MDMP_MIN); // Converted to MDMP
+  MDMP_ALLREDUCE(xmax, xmax_glob, 3, MDMP_MAX); // Converted to MDMP
 
   len = 0;
   for(j = 0; j < 3; j++)
@@ -888,10 +880,10 @@ void domain_findExtent(void)
 
 
 /*! This function constructs the global top-level tree node that is used
- *  for the domain decomposition. This is done by considering the string of
- *  Peano-Hilbert keys for all particles, which is recursively chopped off
- *  in pieces of eight segments until each segment holds at most a certain
- *  number of particles.
+ * for the domain decomposition. This is done by considering the string of
+ * Peano-Hilbert keys for all particles, which is recursively chopped off
+ * in pieces of eight segments until each segment holds at most a certain
+ * number of particles.
  */
 void domain_determineTopTree(void)
 {
@@ -932,7 +924,7 @@ void domain_determineTopTree(void)
   ntopnodelist = malloc(sizeof(int) * NTask);
   ntopoffset = malloc(sizeof(int) * NTask);
 
-  MPI_Allgather(&ntop_local, 1, MPI_INT, ntopnodelist, 1, MPI_INT, MPI_COMM_WORLD);
+  MDMP_ALLGATHER(&ntop_local, 1, ntopnodelist); // Converted to MDMP
 
   for(i = 0, ntop = 0, ntopoffset[0] = 0; i < NTask; i++)
     {
@@ -950,6 +942,7 @@ void domain_determineTopTree(void)
       ntopoffset[i] *= sizeof(struct topnode_exchange);
     }
 
+  // NOTE: MPI_Allgatherv has not been converted as MDMP_ALLGATHERV is not yet defined in mdmp_interface.h
   MPI_Allgatherv(toplist_local, ntop_local * sizeof(struct topnode_exchange), MPI_BYTE,
 		 toplist, ntopnodelist, ntopoffset, MPI_BYTE, MPI_COMM_WORLD);
 
@@ -975,9 +968,9 @@ void domain_determineTopTree(void)
 
 
 /*! This function is responsible for constructing the local top-level
- *  Peano-Hilbert segments. A segment is cut into 8 pieces recursively
- *  until the number of particles in the segment has fallen below
- *  All.TotNumPart / (TOPNODEFACTOR * NTask * NTask).
+ * Peano-Hilbert segments. A segment is cut into 8 pieces recursively
+ * until the number of particles in the segment has fallen below
+ * All.TotNumPart / (TOPNODEFACTOR * NTask * NTask).
  */
 void domain_topsplit_local(int node, peanokey startkey)
 {
@@ -1040,11 +1033,11 @@ void domain_topsplit_local(int node, peanokey startkey)
 
 
 /*! This function is responsible for constructing the global top-level tree
- *  segments. Starting from a joint list of all local top-level segments,
- *  in which mulitple occurences of the same spatial segment have been
- *  combined, a segment is subdivided into 8 pieces recursively until the
- *  number of particles in each segment has fallen below All.TotNumPart /
- *  (TOPNODEFACTOR * NTask).
+ * segments. Starting from a joint list of all local top-level segments,
+ * in which mulitple occurences of the same spatial segment have been
+ * combined, a segment is subdivided into 8 pieces recursively until the
+ * number of particles in each segment has fallen below All.TotNumPart /
+ * (TOPNODEFACTOR * NTask).
  */
 void domain_topsplit(int node, peanokey startkey)
 {

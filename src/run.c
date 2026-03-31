@@ -2,20 +2,20 @@
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
-#include <mpi.h>
 #include <unistd.h>
 
 #include "allvars.h"
 #include "proto.h"
+#include "mdmp_interface.h" // Added MDMP interface
 
 /*! \file run.c
- *  \brief  iterates over timesteps, main loop
+ * \brief  iterates over timesteps, main loop
  */
 
 /*! This routine contains the main simulation loop that iterates over single
- *  timesteps. The loop terminates when the cpu-time limit is reached, when a
- *  `stop' file is found in the output directory, or when the simulation ends
- *  because we arrived at TimeMax.
+ * timesteps. The loop terminates when the cpu-time limit is reached, when a
+ * `stop' file is found in the output directory, or when the simulation ends
+ * because we arrived at TimeMax.
  */
 void run(void)
 {
@@ -83,12 +83,12 @@ void run(void)
 	    }
 	}
 
-      MPI_Bcast(&stopflag, 1, MPI_INT, 0, MPI_COMM_WORLD);
+      MDMP_BCAST(&stopflag, 1, 0); // Converted to MDMP
 
       if(stopflag)
 	{
 	  restart(0);		/* write restart file */
-	  MPI_Barrier(MPI_COMM_WORLD);
+	  MDMP_COMM_SYNC(); // Converted to MDMP
 
 	  if(stopflag == 2 && ThisTask == 0)
 	    {
@@ -116,7 +116,7 @@ void run(void)
 	    stopflag = 0;
 	}
 
-      MPI_Bcast(&stopflag, 1, MPI_INT, 0, MPI_COMM_WORLD);
+      MDMP_BCAST(&stopflag, 1, 0); // Converted to MDMP
 
       if(stopflag == 3)
 	{
@@ -143,10 +143,10 @@ void run(void)
 
 
 /*! This function finds the next synchronization point of the system (i.e. the
- *  earliest point of time any of the particles needs a force computation),
- *  and drifts the system to this point of time.  If the system drifts over
- *  the desired time of a snapshot file, the function will drift to this
- *  moment, generate an output, and then resume the drift.
+ * earliest point of time any of the particles needs a force computation),
+ * and drifts the system to this point of time.  If the system drifts over
+ * the desired time of a snapshot file, the function will drift to this
+ * moment, generate an output, and then resume the drift.
  */
 void find_next_sync_point_and_drift(void)
 {
@@ -162,7 +162,7 @@ void find_next_sync_point_and_drift(void)
     if(min > P[n].Ti_endstep)
       min = P[n].Ti_endstep;
 
-  MPI_Allreduce(&min, &min_glob, 1, MPI_INT, MPI_MIN, MPI_COMM_WORLD);
+  MDMP_ALLREDUCE(&min, &min_glob, 1, MDMP_MIN); // Converted to MDMP
 
   /* We check whether this is a full step where all particles are synchronized */
   flag = 1;
@@ -170,7 +170,7 @@ void find_next_sync_point_and_drift(void)
     if(P[n].Ti_endstep > min_glob)
       flag = 0;
 
-  MPI_Allreduce(&flag, &Flag_FullStep, 1, MPI_INT, MPI_MIN, MPI_COMM_WORLD);
+  MDMP_ALLREDUCE(&flag, &Flag_FullStep, 1, MDMP_MIN); // Converted to MDMP
 
 #ifdef PMGRID
   if(min_glob >= All.PM_Ti_endstep)
@@ -192,7 +192,8 @@ void find_next_sync_point_and_drift(void)
 
   /* note: NumForcesSinceLastDomainDecomp has type "long long" */
   temp = malloc(NTask * sizeof(int));
-  MPI_Allgather(&NumForceUpdate, 1, MPI_INT, temp, 1, MPI_INT, MPI_COMM_WORLD);
+  MDMP_ALLGATHER(&NumForceUpdate, 1, temp); // Converted to MDMP
+  
   for(n = 0; n < NTask; n++)
     All.NumForcesSinceLastDomainDecomp += temp[n];
   free(temp);
@@ -239,7 +240,7 @@ void find_next_sync_point_and_drift(void)
 
 
 /*! this function returns the next output time that is equal or larger to
- *  ti_curr
+ * ti_curr
  */
 int find_next_outputtime(int ti_curr)
 {
@@ -364,8 +365,8 @@ int find_next_outputtime(int ti_curr)
 
 
 /*! This routine writes one line for every timestep to two log-files.  In
- *  FdInfo, we just list the timesteps that have been done, while in FdCPU the
- *  cumulative cpu-time consumption in various parts of the code is stored.
+ * FdInfo, we just list the timesteps that have been done, while in FdCPU the
+ * cumulative cpu-time consumption in various parts of the code is stored.
  */
 void every_timestep_stuff(void)
 {
@@ -407,8 +408,8 @@ void every_timestep_stuff(void)
 
 
 /*! This routine first calls a computation of various global quantities of the
- *  particle distribution, and then writes some statistics about the energies
- *  in the various particle components to the file FdEnergy.
+ * particle distribution, and then writes some statistics about the energies
+ * in the various particle components to the file FdEnergy.
  */
 void energy_statistics(void)
 {

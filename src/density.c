@@ -2,19 +2,18 @@
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
-#include <mpi.h>
 
 #include "allvars.h"
 #include "proto.h"
-
+#include "mdmp_interface.h" // Added MDMP interface
 
 /*! \file density.c 
- *  \brief SPH density computation and smoothing length determination
+ * \brief SPH density computation and smoothing length determination
  *
- *  This file contains the "first SPH loop", where the SPH densities and
- *  some auxiliary quantities are computed.  If the number of neighbours
- *  obtained falls outside the target range, the correct smoothing
- *  length is determined iteratively, if needed.
+ * This file contains the "first SPH loop", where the SPH densities and
+ * some auxiliary quantities are computed.  If the number of neighbours
+ * obtained falls outside the target range, the correct smoothing
+ * length is determined iteratively, if needed.
  */
 
 
@@ -43,15 +42,15 @@ static double boxSize_Z, boxHalf_Z;
 
 
 /*! This function computes the local density for each active SPH particle,
- *  the number of neighbours in the current smoothing radius, and the
- *  divergence and curl of the velocity field.  The pressure is updated as
- *  well.  If a particle with its smoothing region is fully inside the
- *  local domain, it is not exported to the other processors. The function
- *  also detects particles that have a number of neighbours outside the
- *  allowed tolerance range. For these particles, the smoothing length is
- *  adjusted accordingly, and the density computation is executed again.
- *  Note that the smoothing length is not allowed to fall below the lower
- *  bound set by MinGasHsml.
+ * the number of neighbours in the current smoothing radius, and the
+ * divergence and curl of the velocity field.  The pressure is updated as
+ * well.  If a particle with its smoothing region is fully inside the
+ * local domain, it is not exported to the other processors. The function
+ * also detects particles that have a number of neighbours outside the
+ * allowed tolerance range. For these particles, the smoothing length is
+ * adjusted accordingly, and the density computation is executed again.
+ * Note that the smoothing length is not allowed to fall below the lower
+ * bound set by MinGasHsml.
  */
 void density(void)
 {
@@ -62,7 +61,7 @@ void density(void)
   double dt_entr, tstart, tend, tstart_ngb = 0, tend_ngb = 0;
   double sumt, sumcomm, timengb, sumtimengb;
   double timecomp = 0, timeimbalance = 0, timecommsumm = 0, sumimbalance;
-  MPI_Status status;
+  // MPI_Status status; // Removed, handled internally by MDMP
 
 #ifdef PERIODIC
   boxSize = All.BoxSize;
@@ -97,7 +96,7 @@ void density(void)
     }
 
   numlist = malloc(NTask * sizeof(int) * NTask);
-  MPI_Allgather(&NumSphUpdate, 1, MPI_INT, numlist, 1, MPI_INT, MPI_COMM_WORLD);
+  MDMP_ALLGATHER(&NumSphUpdate, 1, numlist); // Converted to MDMP
   for(i = 0, ntot = 0; i < NTask; i++)
     ntot += numlist[i];
   free(numlist);
@@ -157,7 +156,7 @@ void density(void)
 
 	  tstart = second();
 
-	  MPI_Allgather(nsend_local, NTask, MPI_INT, nsend, NTask, MPI_INT, MPI_COMM_WORLD);
+	  MDMP_ALLGATHER(nsend_local, NTask, nsend); // Converted to MDMP
 
 	  tend = second();
 	  timeimbalance += timediff(tstart, tend);
@@ -190,12 +189,9 @@ void density(void)
 		      if(nsend[ThisTask * NTask + recvTask] > 0 || nsend[recvTask * NTask + ThisTask] > 0)
 			{
 			  /* get the particles */
-			  MPI_Sendrecv(&DensDataIn[noffset[recvTask]],
-				       nsend_local[recvTask] * sizeof(struct densdata_in), MPI_BYTE,
-				       recvTask, TAG_DENS_A,
-				       &DensDataGet[nbuffer[ThisTask]],
-				       nsend[recvTask * NTask + ThisTask] * sizeof(struct densdata_in),
-				       MPI_BYTE, recvTask, TAG_DENS_A, MPI_COMM_WORLD, &status);
+			  // Split MPI_Sendrecv into explicit MDMP_SEND and MDMP_RECV
+			  MDMP_SEND(&DensDataIn[noffset[recvTask]], nsend_local[recvTask], ThisTask, recvTask, TAG_DENS_A);
+			  MDMP_RECV(&DensDataGet[nbuffer[ThisTask]], nsend[recvTask * NTask + ThisTask], ThisTask, recvTask, TAG_DENS_A);
 			}
 		    }
 
@@ -215,7 +211,7 @@ void density(void)
 
 	      /* do a block to explicitly measure imbalance */
 	      tstart = second();
-	      MPI_Barrier(MPI_COMM_WORLD);
+	      MDMP_COMM_SYNC(); // Converted to MDMP
 	      tend = second();
 	      timeimbalance += timediff(tstart, tend);
 
@@ -243,12 +239,9 @@ void density(void)
 		      if(nsend[ThisTask * NTask + recvTask] > 0 || nsend[recvTask * NTask + ThisTask] > 0)
 			{
 			  /* send the results */
-			  MPI_Sendrecv(&DensDataResult[nbuffer[ThisTask]],
-				       nsend[recvTask * NTask + ThisTask] * sizeof(struct densdata_out),
-				       MPI_BYTE, recvTask, TAG_DENS_B,
-				       &DensDataPartialResult[noffset[recvTask]],
-				       nsend_local[recvTask] * sizeof(struct densdata_out),
-				       MPI_BYTE, recvTask, TAG_DENS_B, MPI_COMM_WORLD, &status);
+			  // Split MPI_Sendrecv into explicit MDMP_SEND and MDMP_RECV
+			  MDMP_SEND(&DensDataResult[nbuffer[ThisTask]], nsend[recvTask * NTask + ThisTask], ThisTask, recvTask, TAG_DENS_B);
+			  MDMP_RECV(&DensDataPartialResult[noffset[recvTask]], nsend_local[recvTask], ThisTask, recvTask, TAG_DENS_B);
 
 			  /* add the result to the particles */
 			  for(j = 0; j < nsend_local[recvTask]; j++)
@@ -279,7 +272,7 @@ void density(void)
 	      level = ngrp - 1;
 	    }
 
-	  MPI_Allgather(&ndone, 1, MPI_INT, ndonelist, 1, MPI_INT, MPI_COMM_WORLD);
+	  MDMP_ALLGATHER(&ndone, 1, ndonelist); // Converted to MDMP
 	  for(j = 0; j < NTask; j++)
 	    ntotleft -= ndonelist[j];
 	}
@@ -394,7 +387,7 @@ void density(void)
 
 
       numlist = malloc(NTask * sizeof(int) * NTask);
-      MPI_Allgather(&npleft, 1, MPI_INT, numlist, 1, MPI_INT, MPI_COMM_WORLD);
+      MDMP_ALLGATHER(&npleft, 1, numlist); // Converted to MDMP
       for(i = 0, ntot = 0; i < NTask; i++)
 	ntot += numlist[i];
       free(numlist);
@@ -444,10 +437,11 @@ void density(void)
   else
     timengb = 0;
 
-  MPI_Reduce(&timengb, &sumtimengb, 1, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
-  MPI_Reduce(&timecomp, &sumt, 1, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
-  MPI_Reduce(&timecommsumm, &sumcomm, 1, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
-  MPI_Reduce(&timeimbalance, &sumimbalance, 1, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
+  // Final reductions mapped to MDMP macros
+  MDMP_REDUCE(&timengb, &sumtimengb, 1, 0, MDMP_SUM); 
+  MDMP_REDUCE(&timecomp, &sumt, 1, 0, MDMP_SUM); 
+  MDMP_REDUCE(&timecommsumm, &sumcomm, 1, 0, MDMP_SUM); 
+  MDMP_REDUCE(&timeimbalance, &sumimbalance, 1, 0, MDMP_SUM); 
 
   if(ThisTask == 0)
     {
@@ -461,8 +455,8 @@ void density(void)
 
 
 /*! This function represents the core of the SPH density computation. The
- *  target particle may either be local, or reside in the communication
- *  buffer.
+ * target particle may either be local, or reside in the communication
+ * buffer.
  */
 void density_evaluate(int target, int mode)
 {
@@ -514,7 +508,7 @@ void density_evaluate(int target, int mode)
 	  dy = pos[1] - P[j].Pos[1];
 	  dz = pos[2] - P[j].Pos[2];
 
-#ifdef PERIODIC			/*  now find the closest image in the given box size  */
+#ifdef PERIODIC			/* now find the closest image in the given box size  */
 	  if(dx > boxHalf_X)
 	    dx -= boxSize_X;
 	  if(dx < -boxHalf_X)
@@ -602,7 +596,7 @@ void density_evaluate(int target, int mode)
 
 
 /*! This routine is a comparison kernel used in a sort routine to group
- *  particles that are exported to the same processor.
+ * particles that are exported to the same processor.
  */
 int dens_compare_key(const void *a, const void *b)
 {

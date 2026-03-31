@@ -2,7 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
-#include <mpi.h>
+#include "mdmp_interface.h"
 
 #include "allvars.h"
 #include "proto.h"
@@ -23,9 +23,10 @@ int main(int argc, char **argv)
 {
   double t0, t1;
 
-  MPI_Init(&argc, &argv);
-  MPI_Comm_rank(MPI_COMM_WORLD, &ThisTask);
-  MPI_Comm_size(MPI_COMM_WORLD, &NTask);
+
+  MDMP_COMM_INIT();
+  ThisTask = MDMP_GET_RANK();
+  NTask = MDMP_GET_SIZE();
 
   if(NTask <= 1)
     {
@@ -70,7 +71,8 @@ int main(int argc, char **argv)
 
   run();			/* main simulation loop */
 
-  MPI_Finalize();		/* clean up & finalize MPI */
+  MDMP_COMM_FINAL();
+
 
   return 0;
 }

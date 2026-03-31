@@ -2,7 +2,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
-#include <mpi.h>
 #include <errno.h>
 
 #ifdef HAVE_HDF5
@@ -11,11 +10,12 @@
 
 #include "allvars.h"
 #include "proto.h"
+#include "mdmp_interface.h"
 
 
 
 /*! \file io.c
- *  \brief Routines for producing a snapshot file on disk.
+ * \brief Routines for producing a snapshot file on disk.
  */
 
 static int n_type[6];
@@ -25,10 +25,10 @@ static long long ntot_type_all[6];
 
 
 /*! This function writes a snapshot of the particle distribution to one or
- *  several files using the selected file format.  If NumFilesPerSnapshot>1,
- *  the snapshot is distributed onto several files, several of them can be
- *  written simultaneously (up to NumFilesWrittenInParallel). Each file
- *  contains data from a group of processors.
+ * several files using the selected file format.  If NumFilesPerSnapshot>1,
+ * the snapshot is distributed onto several files, several of them can be
+ * written simultaneously (up to NumFilesWrittenInParallel). Each file
+ * contains data from a group of processors.
  */
 void savepositions(int num)
 {
@@ -80,7 +80,7 @@ void savepositions(int num)
    * MPI_Allreduce() to sum the total particle numbers 
    */
   temp = malloc(NTask * 6 * sizeof(int));
-  MPI_Allgather(n_type, 6, MPI_INT, temp, 6, MPI_INT, MPI_COMM_WORLD);
+  MDMP_ALLGATHER(n_type, 6, temp); // Converted to MDMP
   for(i = 0; i < 6; i++)
     {
       ntot_type_all[i] = 0;
@@ -108,7 +108,7 @@ void savepositions(int num)
     {
       if((filenr / All.NumFilesWrittenInParallel) == gr)	/* ok, it's this processor's turn */
 	write_file(buf, masterTask, lastTask);
-      MPI_Barrier(MPI_COMM_WORLD);
+      MDMP_COMM_SYNC(); // Converted to MDMP
     }
 
 
@@ -124,7 +124,7 @@ void savepositions(int num)
 
 
 /*! This function fills the write buffer with particle data. New output blocks
- *  can in principle be added here.
+ * can in principle be added here.
  */
 void fill_write_buffer(enum iofields blocknr, int *startindex, int pc, int type)
 {
@@ -360,8 +360,8 @@ void fill_write_buffer(enum iofields blocknr, int *startindex, int pc, int type)
 
 
 /*! This function tells the size of one data entry in each of the blocks
- *  defined for the output file. If one wants to add a new output-block, this
- *  function should be augmented accordingly.
+ * defined for the output file. If one wants to add a new output-block, this
+ * function should be augmented accordingly.
  */
 int get_bytes_per_blockelement(enum iofields blocknr)
 {
@@ -399,8 +399,8 @@ int get_bytes_per_blockelement(enum iofields blocknr)
 
 
 /*! This function returns the type of the data contained in a given block of
- *  the output file. If one wants to add a new output-block, this function
- *  should be augmented accordingly.
+ * the output file. If one wants to add a new output-block, this function
+ * should be augmented accordingly.
  */
 int get_datatype_in_block(enum iofields blocknr)
 {
@@ -426,8 +426,8 @@ int get_datatype_in_block(enum iofields blocknr)
 
 
 /*! This function informs about the number of elements stored per particle for
- *  the given block of the output file. If one wants to add a new
- *  output-block, this function should be augmented accordingly.
+ * the given block of the output file. If one wants to add a new
+ * output-block, this function should be augmented accordingly.
  */
 int get_values_per_blockelement(enum iofields blocknr)
 {
@@ -458,9 +458,9 @@ int get_values_per_blockelement(enum iofields blocknr)
 
 
 /*! This function determines how many particles there are in a given block,
- *  based on the information in the header-structure.  It also flags particle
- *  types that are present in the block in the typelist array. If one wants to
- *  add a new output-block, this function should be augmented accordingly.
+ * based on the information in the header-structure.  It also flags particle
+ * types that are present in the block in the typelist array. If one wants to
+ * add a new output-block, this function should be augmented accordingly.
  */
 int get_particles_in_block(enum iofields blocknr, int *typelist)
 {
@@ -525,9 +525,9 @@ int get_particles_in_block(enum iofields blocknr, int *typelist)
 
 
 /*! This function tells whether or not a given block in the output file is
- *  present, depending on the type of simulation run and the compile-time
- *  options. If one wants to add a new output-block, this function should be
- *  augmented accordingly.
+ * present, depending on the type of simulation run and the compile-time
+ * options. If one wants to add a new output-block, this function should be
+ * augmented accordingly.
  */
 int blockpresent(enum iofields blocknr)
 {
@@ -559,9 +559,9 @@ int blockpresent(enum iofields blocknr)
 
 
 /*! This function associates a short 4-character block name with each block
- *  number.  This is stored in front of each block for snapshot
- *  FileFormat=2. If one wants to add a new output-block, this function should
- *  be augmented accordingly.
+ * number.  This is stored in front of each block for snapshot
+ * FileFormat=2. If one wants to add a new output-block, this function should
+ * be augmented accordingly.
  */
 void fill_Tab_IO_Labels(void)
 {
@@ -607,8 +607,8 @@ void fill_Tab_IO_Labels(void)
 }
 
 /*! This function returns a descriptive character string that describes the
- *  name of the block when the HDF5 file format is used.  If one wants to add
- *  a new output-block, this function should be augmented accordingly.
+ * name of the block when the HDF5 file format is used.  If one wants to add
+ * a new output-block, this function should be augmented accordingly.
  */
 void get_dataset_name(enum iofields blocknr, char *buf)
 {
@@ -656,18 +656,18 @@ void get_dataset_name(enum iofields blocknr, char *buf)
 
 
 /*! This function writes an actual snapshot file containing the data from
- *  processors 'writeTask' to 'lastTask'. 'writeTask' is the one that actually
- *  writes.  Each snapshot file contains a header first, then particle
- *  positions, velocities and ID's.  Particle masses are written only for
- *  those particle types with zero entry in MassTable.  After that, first the
- *  internal energies u, and then the density is written for the SPH
- *  particles.  If cooling is enabled, mean molecular weight and neutral
- *  hydrogen abundance are written for the gas particles. This is followed by
- *  the SPH smoothing length and further blocks of information, depending on
- *  included physics and compile-time flags.  If HDF5 is used, the header is
- *  stored in a group called "/Header", and the particle data is stored
- *  separately for each particle type in groups calles "/PartType0",
- *  "/PartType1", etc. The sequence of the blocks is unimportant in this case.
+ * processors 'writeTask' to 'lastTask'. 'writeTask' is the one that actually
+ * writes.  Each snapshot file contains a header first, then particle
+ * positions, velocities and ID's.  Particle masses are written only for
+ * those particle types with zero entry in MassTable.  After that, first the
+ * internal energies u, and then the density is written for the SPH
+ * particles.  If cooling is enabled, mean molecular weight and neutral
+ * hydrogen abundance are written for the gas particles. This is followed by
+ * the SPH smoothing length and further blocks of information, depending on
+ * included physics and compile-time flags.  If HDF5 is used, the header is
+ * stored in a group called "/Header", and the particle data is stored
+ * separately for each particle type in groups calles "/PartType0",
+ * "/PartType1", etc. The sequence of the blocks is unimportant in this case.
  */
 void write_file(char *fname, int writeTask, int lastTask)
 {
@@ -676,7 +676,7 @@ void write_file(char *fname, int writeTask, int lastTask)
   int blockmaxlen, ntot_type[6], nn[6];
   enum iofields blocknr;
   int blksize;
-  MPI_Status status;
+  // MPI_Status status; // Removed, handled internally
   FILE *fd = 0;
 
 #ifdef HAVE_HDF5
@@ -699,18 +699,18 @@ void write_file(char *fname, int writeTask, int lastTask)
 
       for(task = writeTask + 1; task <= lastTask; task++)
 	{
-	  MPI_Recv(&nn[0], 6, MPI_INT, task, TAG_LOCALN, MPI_COMM_WORLD, &status);
+	  MDMP_RECV(&nn[0], 6, ThisTask, task, TAG_LOCALN); // Converted to MDMP
 	  for(n = 0; n < 6; n++)
 	    ntot_type[n] += nn[n];
 	}
 
       for(task = writeTask + 1; task <= lastTask; task++)
-	MPI_Send(&ntot_type[0], 6, MPI_INT, task, TAG_N, MPI_COMM_WORLD);
+	MDMP_SEND(&ntot_type[0], 6, ThisTask, task, TAG_N); // Converted to MDMP
     }
   else
     {
-      MPI_Send(&n_type[0], 6, MPI_INT, writeTask, TAG_LOCALN, MPI_COMM_WORLD);
-      MPI_Recv(&ntot_type[0], 6, MPI_INT, writeTask, TAG_N, MPI_COMM_WORLD, &status);
+      MDMP_SEND(&n_type[0], 6, ThisTask, writeTask, TAG_LOCALN); // Converted to MDMP
+      MDMP_RECV(&ntot_type[0], 6, ThisTask, writeTask, TAG_N); // Converted to MDMP
     }
 
 
@@ -890,11 +890,10 @@ void write_file(char *fname, int writeTask, int lastTask)
 
 			      for(p = writeTask; p <= lastTask; p++)
 				if(p != ThisTask)
-				  MPI_Send(&n_for_this_task, 1, MPI_INT, p, TAG_NFORTHISTASK, MPI_COMM_WORLD);
+				  MDMP_SEND(&n_for_this_task, 1, ThisTask, p, TAG_NFORTHISTASK); // Converted to MDMP
 			    }
 			  else
-			    MPI_Recv(&n_for_this_task, 1, MPI_INT, task, TAG_NFORTHISTASK, MPI_COMM_WORLD,
-				     &status);
+			    MDMP_RECV(&n_for_this_task, 1, ThisTask, task, TAG_NFORTHISTASK); // Converted to MDMP
 
 			  while(n_for_this_task > 0)
 			    {
@@ -907,12 +906,10 @@ void write_file(char *fname, int writeTask, int lastTask)
 				fill_write_buffer(blocknr, &offset, pc, type);
 
 			      if(ThisTask == writeTask && task != writeTask)
-				MPI_Recv(CommBuffer, bytes_per_blockelement * pc, MPI_BYTE, task,
-					 TAG_PDATA, MPI_COMM_WORLD, &status);
+				MDMP_RECV(CommBuffer, bytes_per_blockelement * pc, ThisTask, task, TAG_PDATA); // Converted to MDMP
 
 			      if(ThisTask != writeTask && task == ThisTask)
-				MPI_Ssend(CommBuffer, bytes_per_blockelement * pc, MPI_BYTE, writeTask,
-					  TAG_PDATA, MPI_COMM_WORLD);
+				MDMP_SEND(CommBuffer, bytes_per_blockelement * pc, ThisTask, writeTask, TAG_PDATA); // Converted to MDMP
 
 			      if(ThisTask == writeTask)
 				{
@@ -992,7 +989,7 @@ void write_file(char *fname, int writeTask, int lastTask)
 
 
 /*! This function writes the header information in case HDF5 is selected as
- *  file format.
+ * file format.
  */
 #ifdef HAVE_HDF5
 void write_header_attributes_in_hdf5(hid_t handle)
@@ -1117,7 +1114,7 @@ void write_header_attributes_in_hdf5(hid_t handle)
 
 
 /*! This catches I/O errors occuring for my_fwrite(). In this case we
- *  better stop.
+ * better stop.
  */
 size_t my_fwrite(void *ptr, size_t size, size_t nmemb, FILE * stream)
 {
@@ -1134,7 +1131,7 @@ size_t my_fwrite(void *ptr, size_t size, size_t nmemb, FILE * stream)
 
 
 /*! This catches I/O errors occuring for fread(). In this case we
- *  better stop.
+ * better stop.
  */
 size_t my_fread(void *ptr, size_t size, size_t nmemb, FILE * stream)
 {

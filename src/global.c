@@ -2,22 +2,22 @@
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
-#include <mpi.h>
 
 #include "allvars.h"
 #include "proto.h"
+#include "mdmp_interface.h" // Added MDMP interface
 
 
 /*! \file global.c
- *  \brief Computes global physical properties of the system
+ * \brief Computes global physical properties of the system
  */
 
 
 /*! This routine computes various global properties of the particle
- *  distribution and stores the result in the struct `SysState'.
- *  Currently, not all the information that's computed here is actually
- *  used (e.g. momentum is not really used anywhere), just the energies are
- *  written to a log-file every once in a while.
+ * distribution and stores the result in the struct `SysState'.
+ * Currently, not all the information that's computed here is actually
+ * used (e.g. momentum is not really used anywhere), just the energies are
+ * written to a log-file every once in a while.
  */
 void compute_global_quantities_of_system(void)
 {
@@ -115,16 +115,13 @@ void compute_global_quantities_of_system(void)
 
 
   /* some the stuff over all processors */
-  MPI_Reduce(&sys.MassComp[0], &SysState.MassComp[0], 6, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
-  MPI_Reduce(&sys.EnergyPotComp[0], &SysState.EnergyPotComp[0], 6, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
-  MPI_Reduce(&sys.EnergyIntComp[0], &SysState.EnergyIntComp[0], 6, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
-  MPI_Reduce(&sys.EnergyKinComp[0], &SysState.EnergyKinComp[0], 6, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
-  MPI_Reduce(&sys.MomentumComp[0][0], &SysState.MomentumComp[0][0], 6 * 4, MPI_DOUBLE, MPI_SUM, 0,
-	     MPI_COMM_WORLD);
-  MPI_Reduce(&sys.AngMomentumComp[0][0], &SysState.AngMomentumComp[0][0], 6 * 4, MPI_DOUBLE, MPI_SUM, 0,
-	     MPI_COMM_WORLD);
-  MPI_Reduce(&sys.CenterOfMassComp[0][0], &SysState.CenterOfMassComp[0][0], 6 * 4, MPI_DOUBLE, MPI_SUM, 0,
-	     MPI_COMM_WORLD);
+  MDMP_REDUCE(&sys.MassComp[0], &SysState.MassComp[0], 6, 0, MDMP_SUM); // Converted to MDMP
+  MDMP_REDUCE(&sys.EnergyPotComp[0], &SysState.EnergyPotComp[0], 6, 0, MDMP_SUM); // Converted to MDMP
+  MDMP_REDUCE(&sys.EnergyIntComp[0], &SysState.EnergyIntComp[0], 6, 0, MDMP_SUM); // Converted to MDMP
+  MDMP_REDUCE(&sys.EnergyKinComp[0], &SysState.EnergyKinComp[0], 6, 0, MDMP_SUM); // Converted to MDMP
+  MDMP_REDUCE(&sys.MomentumComp[0][0], &SysState.MomentumComp[0][0], 6 * 4, 0, MDMP_SUM); // Converted to MDMP
+  MDMP_REDUCE(&sys.AngMomentumComp[0][0], &SysState.AngMomentumComp[0][0], 6 * 4, 0, MDMP_SUM); // Converted to MDMP
+  MDMP_REDUCE(&sys.CenterOfMassComp[0][0], &SysState.CenterOfMassComp[0][0], 6 * 4, 0, MDMP_SUM); // Converted to MDMP
 
 
   if(ThisTask == 0)
@@ -194,5 +191,5 @@ void compute_global_quantities_of_system(void)
     }
 
   /* give everyone the result, maybe the want to do something with it */
-  MPI_Bcast(&SysState, sizeof(struct state_of_system), MPI_BYTE, 0, MPI_COMM_WORLD);
+  MDMP_BCAST(&SysState, 1, 0); // Converted to MDMP
 }

@@ -2,28 +2,28 @@
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
-#include <mpi.h>
 #include <sys/types.h>
 #include <unistd.h>
 #include <gsl/gsl_rng.h>
 
 #include "allvars.h"
 #include "proto.h"
+#include "mdmp_interface.h"
 
 
 /*! \file begrun.c
- *  \brief initial set-up of a simulation run
+ * \brief initial set-up of a simulation run
  *
- *  This file contains various functions to initialize a simulation run. In
- *  particular, the parameterfile is read in and parsed, the initial
- *  conditions or restart files are read, and global variables are
- *  initialized to their proper values.
+ * This file contains various functions to initialize a simulation run. In
+ * particular, the parameterfile is read in and parsed, the initial
+ * conditions or restart files are read, and global variables are
+ * initialized to their proper values.
  */
 
 
 /*! This function performs the initial set-up of the simulation. First, the
- *  parameterfile is set, then routines for setting units, reading
- *  ICs/restart-files are called, auxialiary memory is allocated, etc.
+ * parameterfile is set, then routines for setting units, reading
+ * ICs/restart-files are called, auxialiary memory is allocated, etc.
  */
 void begrun(void)
 {
@@ -144,7 +144,7 @@ void begrun(void)
 
 
 /*! Computes conversion factors between internal code units and the
- *  cgs-system.
+ * cgs-system.
  */
 void set_units(void)
 {
@@ -193,8 +193,8 @@ void set_units(void)
 
 
 /*!  This function opens various log-files that report on the status and
- *   performance of the simulstion. On restart from restart-files
- *   (start-option 1), the code will append to these files.
+ * performance of the simulstion. On restart from restart-files
+ * (start-option 1), the code will append to these files.
  */
 void open_outputfiles(void)
 {
@@ -272,10 +272,10 @@ void close_outputfiles(void)
 
 
 /*! This function parses the parameterfile in a simple way.  Each paramater
- *  is defined by a keyword (`tag'), and can be either of type double, int,
- *  or character string.  The routine makes sure that each parameter
- *  appears exactly once in the parameterfile, otherwise error messages are
- *  produced that complain about the missing parameters.
+ * is defined by a keyword (`tag'), and can be either of type double, int,
+ * or character string.  The routine makes sure that each parameter
+ * appears exactly once in the parameterfile, otherwise error messages are
+ * produced that complain about the missing parameters.
  */
 void read_parameter_file(char *fname)
 {
@@ -634,7 +634,7 @@ void read_parameter_file(char *fname)
 		    }
 		  else
 		    {
-		      fprintf(stdout, "Error in file %s:   Tag '%s' not allowed or multiple defined.\n",
+		      fprintf(stdout, "Error in file %s:    Tag '%s' not allowed or multiple defined.\n",
 			      fname, buf1);
 		      errorFlag = 1;
 		    }
@@ -675,16 +675,16 @@ void read_parameter_file(char *fname)
 	All.OutputListLength = 0;
     }
 
-  MPI_Bcast(&errorFlag, 1, MPI_INT, 0, MPI_COMM_WORLD);
+  MDMP_BCAST(&errorFlag, 1, 0);
 
   if(errorFlag)
     {
-      MPI_Finalize();
+      MDMP_COMM_FINAL();
       exit(0);
     }
 
   /* now communicate the relevant parameters to the other processes */
-  MPI_Bcast(&All, sizeof(struct global_data_all_processes), MPI_BYTE, 0, MPI_COMM_WORLD);
+  MDMP_BCAST(&All, 1, 0);
 
 
   if(All.NumFilesWrittenInParallel < 1)
@@ -753,8 +753,8 @@ void read_parameter_file(char *fname)
 
 
 /*! this function reads a table with a list of desired output times. The
- *  table does not have to be ordered in any way, but may not contain more
- *  than MAXLEN_OUTPUTLIST entries.
+ * table does not have to be ordered in any way, but may not contain more
+ * than MAXLEN_OUTPUTLIST entries.
  */
 int read_outputlist(char *fname)
 {
@@ -785,10 +785,10 @@ int read_outputlist(char *fname)
 
 
 /*! If a restart from restart-files is carried out where the TimeMax
- *  variable is increased, then the integer timeline needs to be
- *  adjusted. The approach taken here is to reduce the resolution of the
- *  integer timeline by factors of 2 until the new final time can be
- *  reached within TIMEBASE.
+ * variable is increased, then the integer timeline needs to be
+ * adjusted. The approach taken here is to reduce the resolution of the
+ * integer timeline by factors of 2 until the new final time can be
+ * reached within TIMEBASE.
  */
 void readjust_timebase(double TimeMax_old, double TimeMax_new)
 {
@@ -834,4 +834,3 @@ void readjust_timebase(double TimeMax_old, double TimeMax_new)
 
   All.TimeMax = TimeMax_new;
 }
-

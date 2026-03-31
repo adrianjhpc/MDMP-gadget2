@@ -40,7 +40,7 @@ OPT   +=  -DSYNCHRONIZATION
 
 
 #--------------------------------------- Output 
-OPT   +=  -DHAVE_HDF5  
+#OPT   +=  -DHAVE_HDF5  
 #OPT   +=  -DOUTPUTPOTENTIAL
 #OPT   +=  -DOUTPUTACCELERATION
 #OPT   +=  -DOUTPUTCHANGEOFENTROPY
@@ -79,14 +79,15 @@ OPT   +=  -DHAVE_HDF5
 
 #--------------------------------------- Select some defaults
 
-CC       =  mpicc               # sets the C-compiler
+CC       =  /home/adrianj/MDMP/harness/mdmpc               # sets the C-compiler
 OPTIMIZE =  -O2 -Wall -g        # sets optimization and warning flags
-MPICHLIB =  -lmpich
+MPICHLIB =
 
 
 #--------------------------------------- Select target computer
 
-SYSTYPE="MPA"
+SYSTYPE="NGIO"
+#SYSTYPE="MPA"
 #SYSTYPE="Mako"
 #SYSTYPE="Regatta"
 #SYSTYPE="RZG_LinuxCluster"
@@ -97,6 +98,19 @@ SYSTYPE="MPA"
 
 
 #--------------------------------------- Adjust settings for target computer
+
+ifeq ($(SYSTYPE),"NGIO")
+CC       =  /home/adrianj/MDMP/harness/mdmpc
+OPTIMIZE =  -O3 -Wall -I /usr/include/mpich-x86_64
+GSL_INCL =  
+GSL_LIBS = 
+FFTW_INCL=
+FFTW_LIBS=
+MPICHLIB = -L/usr/lib64/mpich/lib -lmpi
+HDF5INCL =
+HDF5LIB  =  -lhdf5 -lz
+endif
+
 
 ifeq ($(SYSTYPE),"MPA")
 CC       =  mpicc   

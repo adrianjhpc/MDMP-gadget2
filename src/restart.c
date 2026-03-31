@@ -2,7 +2,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
-#include <mpi.h>
 
 #include <fcntl.h>
 #include <sys/stat.h>
@@ -13,6 +12,8 @@
 
 #include "allvars.h"
 #include "proto.h"
+
+#include "mdmp_interface.h"
 
 /*! \file restart.c
  *  \brief Code for reading and writing restart files
@@ -96,7 +97,7 @@ void restart(int modus)
 
 	  if(modus > 0 && groupTask == 0)	/* read */
 	    {
-	      MPI_Bcast(&all_task0, sizeof(struct global_data_all_processes), MPI_BYTE, 0, MPI_COMM_WORLD);
+              MDMP_BCAST(&all_task0, 1, 0);
 	    }
 
 	  old_MaxPart = All.MaxPart;
@@ -275,11 +276,11 @@ void restart(int modus)
 	{
 	  if(modus > 0 && groupTask == 0)	/* read */
 	    {
-	      MPI_Bcast(&all_task0, sizeof(struct global_data_all_processes), MPI_BYTE, 0, MPI_COMM_WORLD);
+              MDMP_BCAST(&all_task0, 1, 0);
 	    }
 	}
 
-      MPI_Barrier(MPI_COMM_WORLD);
+      MDMP_COMM_SYNC();
     }
 }
 

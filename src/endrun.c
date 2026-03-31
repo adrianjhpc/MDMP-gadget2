@@ -2,13 +2,13 @@
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
-#include <mpi.h>
 #include <signal.h>
 #include <unistd.h>
 
 #include "allvars.h"
 #include "proto.h"
 
+#include "mdmp_interface.h"
 
 /*! \file endrun.c 
  *  \brief Termination of simulation
@@ -33,11 +33,11 @@ void endrun(int ierr)
       raise(SIGABRT);
       sleep(60);
 #else
-      MPI_Abort(MPI_COMM_WORLD, ierr);
+      MDMP_ABORT(ierr);
 #endif
       exit(0);
     }
 
-  MPI_Finalize();
+  MDMP_COMM_FINAL();
   exit(0);
 }
