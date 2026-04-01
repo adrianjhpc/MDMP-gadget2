@@ -686,7 +686,6 @@ void read_parameter_file(char *fname)
   /* now communicate the relevant parameters to the other processes */
   MDMP_BCAST(&All, 1, 0);
 
-
   if(All.NumFilesWrittenInParallel < 1)
     {
       if(ThisTask == 0)

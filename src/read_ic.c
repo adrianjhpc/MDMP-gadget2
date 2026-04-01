@@ -663,7 +663,9 @@ int find_files(char *fname)
 	}
     }
 
+  //MDMP_COMMREGION_BEGIN();
   MDMP_BCAST(&header, 1, 0); // Converted to MDMP
+  //MDMP_COMMREGION_END();
 
   if(header.num_files > 0)
     return header.num_files;
@@ -696,7 +698,9 @@ int find_files(char *fname)
 	}
     }
 
+  //MDMP_COMMREGION_BEGIN();
   MDMP_BCAST(&header, 1, 0); // Converted to MDMP
+  //MDMP_COMMREGION_END();
 
   if(header.num_files > 0)
     return header.num_files;

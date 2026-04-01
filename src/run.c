@@ -82,7 +82,6 @@ void run(void)
 	      stopflag = 2;
 	    }
 	}
-
       MDMP_BCAST(&stopflag, 1, 0); // Converted to MDMP
 
       if(stopflag)

@@ -5,7 +5,7 @@
 #include <float.h>
 
 /*! \file pm_periodic.c
- *  \brief routines for periodic PM-force computation
+ * \brief routines for periodic PM-force computation
  */
 
 #ifdef PMGRID
@@ -24,6 +24,7 @@
 
 #include "allvars.h"
 #include "proto.h"
+#include "mdmp_interface.h" // Added MDMP interface
 
 #define  PMGRID2 (2*(PMGRID/2 + 1))
 
@@ -49,7 +50,7 @@ static FLOAT to_slab_fac;
 
 
 /*! This routines generates the FFTW-plans to carry out the parallel FFTs
- *  later on. Some auxiliary variables are also initialized.
+ * later on. Some auxiliary variables are also initialized.
  */
 void pm_init_periodic(void)
 {
@@ -76,12 +77,12 @@ void pm_init_periodic(void)
   for(i = 0; i < nslab_x; i++)
     slab_to_task_local[slabstart_x + i] = ThisTask;
 
-  MPI_Allreduce(slab_to_task_local, slab_to_task, PMGRID, MPI_INT, MPI_SUM, MPI_COMM_WORLD);
+  MDMP_ALLREDUCE(slab_to_task_local, slab_to_task, PMGRID, MDMP_SUM); // Converted to MDMP
 
-  MPI_Allreduce(&nslab_x, &smallest_slab, 1, MPI_INT, MPI_MIN, MPI_COMM_WORLD);
+  MDMP_ALLREDUCE(&nslab_x, &smallest_slab, 1, MDMP_MIN); // Converted to MDMP
 
   slabs_per_task = malloc(NTask * sizeof(int));
-  MPI_Allgather(&nslab_x, 1, MPI_INT, slabs_per_task, 1, MPI_INT, MPI_COMM_WORLD);
+  MDMP_ALLGATHER(&nslab_x, 1, slabs_per_task); // Converted to MDMP
 
   if(ThisTask == 0)
     {
@@ -90,7 +91,7 @@ void pm_init_periodic(void)
     }
 
   first_slab_of_task = malloc(NTask * sizeof(int));
-  MPI_Allgather(&slabstart_x, 1, MPI_INT, first_slab_of_task, 1, MPI_INT, MPI_COMM_WORLD);
+  MDMP_ALLGATHER(&slabstart_x, 1, first_slab_of_task); // Converted to MDMP
 
   meshmin_list = malloc(3 * NTask * sizeof(int));
   meshmax_list = malloc(3 * NTask * sizeof(int));
@@ -98,16 +99,16 @@ void pm_init_periodic(void)
 
   to_slab_fac = PMGRID / All.BoxSize;
 
-  MPI_Allreduce(&fftsize, &maxfftsize, 1, MPI_INT, MPI_MAX, MPI_COMM_WORLD);
+  MDMP_ALLREDUCE(&fftsize, &maxfftsize, 1, MDMP_MAX); // Converted to MDMP
 }
 
 
 /*! This function allocates the memory neeed to compute the long-range PM
- *  force. Three fields are used, one to hold the density (and its FFT, and
- *  then the real-space potential), one to hold the force field obtained by
- *  finite differencing, and finally a workspace field, which is used both as
- *  workspace for the parallel FFT, and as buffer for the communication
- *  algorithm used in the force computation.
+ * force. Three fields are used, one to hold the density (and its FFT, and
+ * then the real-space potential), one to hold the force field obtained by
+ * finite differencing, and finally a workspace field, which is used both as
+ * workspace for the parallel FFT, and as buffer for the communication
+ * algorithm used in the force computation.
  */
 void pm_init_periodic_allocate(int dimprod)
 {
@@ -116,7 +117,7 @@ void pm_init_periodic_allocate(int dimprod)
   double bytes_tot = 0;
   size_t bytes;
 
-  MPI_Allreduce(&dimprod, &dimprodmax, 1, MPI_INT, MPI_MAX, MPI_COMM_WORLD);
+  MDMP_ALLREDUCE(&dimprod, &dimprodmax, 1, MDMP_MAX); // Converted to MDMP
 
   /* allocate the memory to hold the FFT fields */
 
@@ -167,14 +168,14 @@ void pm_init_periodic_free(void)
 
 
 /*! Calculates the long-range periodic force given the particle positions
- *  using the PM method.  The force is Gaussian filtered with Asmth, given in
- *  mesh-cell units. We carry out a CIC charge assignment, and compute the
- *  potenial by Fourier transform methods. The potential is finite differenced
- *  using a 4-point finite differencing formula, and the forces are
- *  interpolated tri-linearly to the particle positions. The CIC kernel is
- *  deconvolved. Note that the particle distribution is not in the slab
- *  decomposition that is used for the FFT. Instead, overlapping patches
- *  between local domains and FFT slabs are communicated as needed.
+ * using the PM method.  The force is Gaussian filtered with Asmth, given in
+ * mesh-cell units. We carry out a CIC charge assignment, and compute the
+ * potenial by Fourier transform methods. The potential is finite differenced
+ * using a 4-point finite differencing formula, and the forces are
+ * interpolated tri-linearly to the particle positions. The CIC kernel is
+ * deconvolved. Note that the particle distribution is not in the slab
+ * decomposition that is used for the FFT. Instead, overlapping patches
+ * between local domains and FFT slabs are communicated as needed.
  */
 void pmforce_periodic(void)
 {
@@ -189,7 +190,7 @@ void pmforce_periodic(void)
   int meshmin[3], meshmax[3], sendmin, sendmax, recvmin, recvmax;
   int rep, ncont, cont_sendmin[2], cont_sendmax[2], cont_recvmin[2], cont_recvmax[2];
   int dimx, dimy, dimz, recv_dimx, recv_dimy, recv_dimz;
-  MPI_Status status;
+  // MPI_Status status; // Removed, handled internally by MDMP
 
 
   if(ThisTask == 0)
@@ -232,8 +233,8 @@ void pmforce_periodic(void)
 	}
     }
 
-  MPI_Allgather(meshmin, 3, MPI_INT, meshmin_list, 3, MPI_INT, MPI_COMM_WORLD);
-  MPI_Allgather(meshmax, 3, MPI_INT, meshmax_list, 3, MPI_INT, MPI_COMM_WORLD);
+  MDMP_ALLGATHER(meshmin, 3, meshmin_list); // Converted to MDMP
+  MDMP_ALLGATHER(meshmax, 3, meshmax_list); // Converted to MDMP
 
   dimx = meshmax[0] - meshmin[0] + 2;
   dimy = meshmax[1] - meshmin[1] + 2;
@@ -325,11 +326,14 @@ void pmforce_periodic(void)
 
 	      if(level > 0)
 		{
-		  MPI_Sendrecv(workspace + (sendmin - meshmin[0]) * dimy * dimz,
-			       (sendmax - sendmin + 1) * dimy * dimz * sizeof(fftw_real), MPI_BYTE, recvTask,
-			       TAG_PERIODIC_A, forcegrid,
-			       (recvmax - recvmin + 1) * recv_dimy * recv_dimz * sizeof(fftw_real), MPI_BYTE,
-			       recvTask, TAG_PERIODIC_A, MPI_COMM_WORLD, &status);
+		  // Split MPI_Sendrecv into explicit MDMP_SEND and MDMP_RECV
+		  MDMP_SEND(workspace + (sendmin - meshmin[0]) * dimy * dimz, 
+                            (sendmax - sendmin + 1) * dimy * dimz, 
+                            ThisTask, recvTask, TAG_PERIODIC_A);
+                  
+                  MDMP_RECV(forcegrid, 
+                            (recvmax - recvmin + 1) * recv_dimy * recv_dimz, 
+                            ThisTask, recvTask, TAG_PERIODIC_A);
 		}
 	      else
 		{
@@ -559,12 +563,14 @@ void pmforce_periodic(void)
 
 		  if(level > 0)
 		    {
-		      MPI_Sendrecv(forcegrid,
-				   (sendmax - sendmin + 1) * recv_dimy * recv_dimz * sizeof(fftw_real),
-				   MPI_BYTE, recvTask, TAG_PERIODIC_B,
-				   workspace + (recvmin - (meshmin[0] - 2)) * dimy * dimz,
-				   (recvmax - recvmin + 1) * dimy * dimz * sizeof(fftw_real), MPI_BYTE,
-				   recvTask, TAG_PERIODIC_B, MPI_COMM_WORLD, &status);
+		      // Split MPI_Sendrecv into explicit MDMP_SEND and MDMP_RECV
+		      MDMP_SEND(forcegrid, 
+                                (sendmax - sendmin + 1) * recv_dimy * recv_dimz, 
+                                ThisTask, recvTask, TAG_PERIODIC_B);
+                      
+                      MDMP_RECV(workspace + (recvmin - (meshmin[0] - 2)) * dimy * dimz, 
+                                (recvmax - recvmin + 1) * dimy * dimz, 
+                                ThisTask, recvTask, TAG_PERIODIC_B);
 		    }
 		  else
 		    {
@@ -685,9 +691,9 @@ void pmforce_periodic(void)
 
 
 /*! Calculates the long-range potential using the PM method.  The potential is
- *  Gaussian filtered with Asmth, given in mesh-cell units. We carry out a CIC
- *  charge assignment, and compute the potenial by Fourier transform
- *  methods. The CIC kernel is deconvolved.
+ * Gaussian filtered with Asmth, given in mesh-cell units. We carry out a CIC
+ * charge assignment, and compute the potenial by Fourier transform
+ * methods. The CIC kernel is deconvolved.
  */
 void pmpotential_periodic(void)
 {
@@ -702,7 +708,7 @@ void pmpotential_periodic(void)
   int meshmin[3], meshmax[3], sendmin, sendmax, recvmin, recvmax;
   int rep, ncont, cont_sendmin[2], cont_sendmax[2], cont_recvmin[2], cont_recvmax[2];
   int dimx, dimy, dimz, recv_dimx, recv_dimy, recv_dimz;
-  MPI_Status status;
+  // MPI_Status status; // Removed, handled internally by MDMP
 
   if(ThisTask == 0)
     {
@@ -741,8 +747,8 @@ void pmpotential_periodic(void)
 	}
     }
 
-  MPI_Allgather(meshmin, 3, MPI_INT, meshmin_list, 3, MPI_INT, MPI_COMM_WORLD);
-  MPI_Allgather(meshmax, 3, MPI_INT, meshmax_list, 3, MPI_INT, MPI_COMM_WORLD);
+  MDMP_ALLGATHER(meshmin, 3, meshmin_list); // Converted to MDMP
+  MDMP_ALLGATHER(meshmax, 3, meshmax_list); // Converted to MDMP
 
   dimx = meshmax[0] - meshmin[0] + 2;
   dimy = meshmax[1] - meshmin[1] + 2;
@@ -834,11 +840,14 @@ void pmpotential_periodic(void)
 
 	      if(level > 0)
 		{
-		  MPI_Sendrecv(workspace + (sendmin - meshmin[0]) * dimy * dimz,
-			       (sendmax - sendmin + 1) * dimy * dimz * sizeof(fftw_real), MPI_BYTE, recvTask,
-			       TAG_PERIODIC_C, forcegrid,
-			       (recvmax - recvmin + 1) * recv_dimy * recv_dimz * sizeof(fftw_real), MPI_BYTE,
-			       recvTask, TAG_PERIODIC_C, MPI_COMM_WORLD, &status);
+		  // Split MPI_Sendrecv into explicit MDMP_SEND and MDMP_RECV
+		  MDMP_SEND(workspace + (sendmin - meshmin[0]) * dimy * dimz, 
+                            (sendmax - sendmin + 1) * dimy * dimz, 
+                            ThisTask, recvTask, TAG_PERIODIC_C);
+                  
+                  MDMP_RECV(forcegrid, 
+                            (recvmax - recvmin + 1) * recv_dimy * recv_dimz, 
+                            ThisTask, recvTask, TAG_PERIODIC_C);
 		}
 	      else
 		{
@@ -1067,12 +1076,14 @@ void pmpotential_periodic(void)
 
 		  if(level > 0)
 		    {
-		      MPI_Sendrecv(forcegrid,
-				   (sendmax - sendmin + 1) * recv_dimy * recv_dimz * sizeof(fftw_real),
-				   MPI_BYTE, recvTask, TAG_PERIODIC_D,
-				   workspace + (recvmin - (meshmin[0] - 2)) * dimy * dimz,
-				   (recvmax - recvmin + 1) * dimy * dimz * sizeof(fftw_real), MPI_BYTE,
-				   recvTask, TAG_PERIODIC_D, MPI_COMM_WORLD, &status);
+		      // Split MPI_Sendrecv into explicit MDMP_SEND and MDMP_RECV
+		      MDMP_SEND(forcegrid, 
+                                (sendmax - sendmin + 1) * recv_dimy * recv_dimz, 
+                                ThisTask, recvTask, TAG_PERIODIC_D);
+                      
+                      MDMP_RECV(workspace + (recvmin - (meshmin[0] - 2)) * dimy * dimz, 
+                                (recvmax - recvmin + 1) * dimy * dimz, 
+                                ThisTask, recvTask, TAG_PERIODIC_D);
 		    }
 		  else
 		    {
